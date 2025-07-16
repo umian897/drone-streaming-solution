@@ -1,0 +1,13 @@
+# Node/React
+node_modules/
+build/
+.env
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+.pytest_cache/
