@@ -1,24 +1,28 @@
-import React, { useState } from 'react';
-import { User, Mail, Lock, LogIn, UserPlus } from 'lucide-react'; // Icons for forms
 
-// --- LoginForm Component ---
-// This component renders the login form.
-const LoginForm = ({ onSwitchToRegister }) => {
+import React, { useState } from 'react';
+
+import { User, Mail, Lock, LogIn, UserPlus } from 'lucide-react'; 
+
+const LoginForm = ({ onSwitchToRegister, onLoginSuccess }) => { 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // Handle login logic here (e.g., send data to Firebase)
-    console.log('Login attempt:', { email, password });
-    alert('Login functionality not yet implemented.'); // Using alert as a temporary placeholder
-  };
+ const handleSubmit = (e) => {
+  e.preventDefault();
 
+  // TEMPORARILY COMMENT OUT VALIDATION TO BYPASS LOGIN FORM
+  // if (!email || !password || (isRegistering && (!username || password !== confirmPassword))) {
+  //   setErrorMessage("Please fill in all fields.");
+  //   return;
+  // }
+
+  onLoginSuccess(); // This will now always be called on form submission
+};
   return (
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
       <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Welcome Back to AirVibe!</h2>
       
-      {/* Email Input */}
+      
       <div>
         <label htmlFor="email" className="sr-only">Email address</label>
         <div className="relative rounded-md shadow-sm">
@@ -39,7 +43,6 @@ const LoginForm = ({ onSwitchToRegister }) => {
         </div>
       </div>
 
-      {/* Password Input */}
       <div>
         <label htmlFor="password" className="sr-only">Password</label>
         <div className="relative rounded-md shadow-sm">
@@ -60,7 +63,6 @@ const LoginForm = ({ onSwitchToRegister }) => {
         </div>
       </div>
 
-      {/* Login Button */}
       <div>
         <button
           type="submit"
@@ -70,13 +72,13 @@ const LoginForm = ({ onSwitchToRegister }) => {
         </button>
       </div>
 
-      {/* Switch to Register */}
+     
       <div className="text-center">
         <p className="text-sm text-gray-600">
           Don't have an account?{' '}
           <button
             type="button"
-            onClick={onSwitchToRegister}
+            onClick={onSwitchToRegister} 
             className="font-medium text-blue-600 hover:text-blue-500 focus:outline-none focus:underline"
           >
             Sign Up
@@ -87,8 +89,7 @@ const LoginForm = ({ onSwitchToRegister }) => {
   );
 };
 
-// --- RegisterForm Component ---
-// This component renders the registration form.
+
 const RegisterForm = ({ onSwitchToLogin }) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -96,31 +97,32 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMatch, setPasswordMatch] = useState(true);
 
-  // Effect to check password match whenever password or confirmPassword changes
+  // Effect to check if passwords match in real-time
   React.useEffect(() => {
     if (password && confirmPassword) {
       setPasswordMatch(password === confirmPassword);
     } else {
-      setPasswordMatch(true); // Don't show mismatch until both are typed
+      setPasswordMatch(true); // Don't show mismatch until both fields are populated
     }
   }, [password, confirmPassword]);
 
+  // Handles the form submission for registration
   const handleSubmit = (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       alert('Passwords do not match!');
       return;
     }
-    // Handle registration logic here (e.g., send data to Firebase)
+    // In a real app, you would send 'username', 'email', 'password' to Firebase for user creation.
     console.log('Register attempt:', { username, email, password });
-    alert('Registration functionality not yet implemented.'); // Using alert as a temporary placeholder
+    alert('Registration functionality not yet implemented.');
   };
 
   return (
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
       <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Join AirVibe Today!</h2>
       
-      {/* Username Input */}
+      {/* Username Input Field */}
       <div>
         <label htmlFor="username" className="sr-only">Username</label>
         <div className="relative rounded-md shadow-sm">
@@ -141,7 +143,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </div>
       </div>
 
-      {/* Email Input */}
+      {/* Email Input Field */}
       <div>
         <label htmlFor="email-register" className="sr-only">Email address</label>
         <div className="relative rounded-md shadow-sm">
@@ -162,7 +164,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </div>
       </div>
 
-      {/* Password Input */}
+      {/* Password Input Field */}
       <div>
         <label htmlFor="password-register" className="sr-only">Password</label>
         <div className="relative rounded-md shadow-sm">
@@ -186,7 +188,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         )}
       </div>
 
-      {/* Confirm Password Input */}
+      {/* Confirm Password Input Field */}
       <div>
         <label htmlFor="confirm-password" className="sr-only">Confirm Password</label>
         <div className="relative rounded-md shadow-sm">
@@ -220,13 +222,13 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </button>
       </div>
 
-      {/* Switch to Login */}
+      {/* Option to switch to Login Form */}
       <div className="text-center">
         <p className="text-sm text-gray-600">
           Already have an account?{' '}
           <button
             type="button"
-            onClick={onSwitchToLogin}
+            onClick={onSwitchToLogin} // Calls function to switch form
             className="font-medium text-sky-600 hover:text-sky-500 focus:outline-none focus:underline"
           >
             Sign In
@@ -237,32 +239,32 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   );
 };
 
-// --- AuthPage Component (Main Container) ---
-// This component manages the state to switch between login and registration forms.
-export default function AuthPage() {
-  // State to determine which form to display: true for register, false for login
-  const [showRegister, setShowRegister] = useState(true);
+// --- Authentication Page Component (Main Export) ---
+// This is the main component for the authentication screen.
+// It manages the state to switch between login and registration forms and renders the overall page layout.
+export default function AuthPage({ onLoginSuccess }) { // Receives onLoginSuccess prop from App.js
+  const [showRegister, setShowRegister] = useState(true); // State to toggle between register (true) and login (false) forms
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans">
       <div className="flex flex-col lg:flex-row w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Left Half: Image Section */}
+        {/* Left Half: Image Section with Drone Visuals */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gradient-to-br from-blue-500 to-teal-600 relative overflow-hidden">
-          {/* Background pattern/overlay for visual interest */}
+          {/* Subtle background pattern for visual interest */}
           <div className="absolute inset-0 opacity-10 bg-pattern-grid"></div>
           
-          {/* Main Drone Image - A more abstract, flying drone */}
+          {/* Main Drone Image - A placeholder image suggesting a drone in flight */}
           <img
-            src="https://placehold.co/600x800/2980b9/ffffff?text=AirVibe+Drone+in+Flight" // Darker blue background, white text
+            src="https://placehold.co/600x800/2980b9/ffffff?text=AirVibe+Drone+in+Flight" 
             alt="AirVibe Drone in Flight"
             className="rounded-xl shadow-xl max-w-full h-auto object-cover transform transition-transform duration-500 hover:scale-105"
             onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/600x800/2980b9/ffffff?text=Drone+Image+Error"; }}
           />
           
-          {/* Overlay text with Logo and Custom Drone SVG */}
+          {/* Overlay text with the AirVibe logo and a custom drone icon */}
           <div className="absolute bottom-8 left-8 right-8 text-white text-center">
             <h2 className="text-4xl font-extrabold mb-2 drop-shadow-lg flex items-center justify-center">
-              {/* Custom Drone SVG icon - slightly adjusted for visual appeal */}
+              {/* Custom Drone SVG icon for unique branding */}
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
                 viewBox="0 0 24 24" 
@@ -290,16 +292,18 @@ export default function AuthPage() {
           </div>
         </div>
 
-        {/* Right Half: Form Section */}
+        {/* Right Half: Form Section (Login or Register) */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
           {showRegister ? (
+            // If showRegister is true, display the Register form
             <RegisterForm onSwitchToLogin={() => setShowRegister(false)} />
           ) : (
-            <LoginForm onSwitchToRegister={() => setShowRegister(true)} />
+            // If showRegister is false, display the Login form
+            // Pass onLoginSuccess to the LoginForm so it can trigger the main app view
+            <LoginForm onSwitchToRegister={() => setShowRegister(true)} onLoginSuccess={onLoginSuccess} /> 
           )}
         </div>
       </div>
     </div>
   );
 }
-
