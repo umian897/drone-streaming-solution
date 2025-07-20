@@ -1,4 +1,4 @@
-// frontend/src/components/assets/Assets.js
+
 import React from 'react';
 function Assets() {
   return (

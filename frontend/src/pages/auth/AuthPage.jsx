@@ -10,13 +10,9 @@ const LoginForm = ({ onSwitchToRegister, onLoginSuccess }) => {
  const handleSubmit = (e) => {
   e.preventDefault();
 
-  // TEMPORARILY COMMENT OUT VALIDATION TO BYPASS LOGIN FORM
-  // if (!email || !password || (isRegistering && (!username || password !== confirmPassword))) {
-  //   setErrorMessage("Please fill in all fields.");
-  //   return;
-  // }
+  
 
-  onLoginSuccess(); // This will now always be called on form submission
+  onLoginSuccess(); 
 };
   return (
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
@@ -97,23 +93,23 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMatch, setPasswordMatch] = useState(true);
 
-  // Effect to check if passwords match in real-time
+ 
   React.useEffect(() => {
     if (password && confirmPassword) {
       setPasswordMatch(password === confirmPassword);
     } else {
-      setPasswordMatch(true); // Don't show mismatch until both fields are populated
+      setPasswordMatch(true); 
     }
   }, [password, confirmPassword]);
 
-  // Handles the form submission for registration
+  
   const handleSubmit = (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       alert('Passwords do not match!');
       return;
     }
-    // In a real app, you would send 'username', 'email', 'password' to Firebase for user creation.
+   
     console.log('Register attempt:', { username, email, password });
     alert('Registration functionality not yet implemented.');
   };
@@ -122,7 +118,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
       <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Join AirVibe Today!</h2>
       
-      {/* Username Input Field */}
+      {}
       <div>
         <label htmlFor="username" className="sr-only">Username</label>
         <div className="relative rounded-md shadow-sm">
@@ -143,7 +139,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </div>
       </div>
 
-      {/* Email Input Field */}
+      {}
       <div>
         <label htmlFor="email-register" className="sr-only">Email address</label>
         <div className="relative rounded-md shadow-sm">
@@ -164,7 +160,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </div>
       </div>
 
-      {/* Password Input Field */}
+      {}
       <div>
         <label htmlFor="password-register" className="sr-only">Password</label>
         <div className="relative rounded-md shadow-sm">
@@ -188,7 +184,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         )}
       </div>
 
-      {/* Confirm Password Input Field */}
+      {}
       <div>
         <label htmlFor="confirm-password" className="sr-only">Confirm Password</label>
         <div className="relative rounded-md shadow-sm">
@@ -212,7 +208,7 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         )}
       </div>
 
-      {/* Sign Up Button */}
+      {}
       <div>
         <button
           type="submit"
@@ -222,13 +218,13 @@ const RegisterForm = ({ onSwitchToLogin }) => {
         </button>
       </div>
 
-      {/* Option to switch to Login Form */}
+      {}
       <div className="text-center">
         <p className="text-sm text-gray-600">
           Already have an account?{' '}
           <button
             type="button"
-            onClick={onSwitchToLogin} // Calls function to switch form
+            onClick={onSwitchToLogin} 
             className="font-medium text-sky-600 hover:text-sky-500 focus:outline-none focus:underline"
           >
             Sign In
@@ -239,21 +235,18 @@ const RegisterForm = ({ onSwitchToLogin }) => {
   );
 };
 
-// --- Authentication Page Component (Main Export) ---
-// This is the main component for the authentication screen.
-// It manages the state to switch between login and registration forms and renders the overall page layout.
-export default function AuthPage({ onLoginSuccess }) { // Receives onLoginSuccess prop from App.js
-  const [showRegister, setShowRegister] = useState(true); // State to toggle between register (true) and login (false) forms
 
+export default function AuthPage({ onLoginSuccess }) { 
+  const [showRegister, setShowRegister] = useState(true); 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans">
       <div className="flex flex-col lg:flex-row w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Left Half: Image Section with Drone Visuals */}
+        {}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gradient-to-br from-blue-500 to-teal-600 relative overflow-hidden">
-          {/* Subtle background pattern for visual interest */}
+          {}
           <div className="absolute inset-0 opacity-10 bg-pattern-grid"></div>
           
-          {/* Main Drone Image - A placeholder image suggesting a drone in flight */}
+          {}
           <img
             src="https://placehold.co/600x800/2980b9/ffffff?text=AirVibe+Drone+in+Flight" 
             alt="AirVibe Drone in Flight"
@@ -261,7 +254,7 @@ export default function AuthPage({ onLoginSuccess }) { // Receives onLoginSucces
             onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/600x800/2980b9/ffffff?text=Drone+Image+Error"; }}
           />
           
-          {/* Overlay text with the AirVibe logo and a custom drone icon */}
+          {}
           <div className="absolute bottom-8 left-8 right-8 text-white text-center">
             <h2 className="text-4xl font-extrabold mb-2 drop-shadow-lg flex items-center justify-center">
               {/* Custom Drone SVG icon for unique branding */}
@@ -298,8 +291,7 @@ export default function AuthPage({ onLoginSuccess }) { // Receives onLoginSucces
             // If showRegister is true, display the Register form
             <RegisterForm onSwitchToLogin={() => setShowRegister(false)} />
           ) : (
-            // If showRegister is false, display the Login form
-            // Pass onLoginSuccess to the LoginForm so it can trigger the main app view
+            
             <LoginForm onSwitchToRegister={() => setShowRegister(true)} onLoginSuccess={onLoginSuccess} /> 
           )}
         </div>
