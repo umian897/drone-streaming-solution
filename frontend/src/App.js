@@ -1,5 +1,5 @@
  import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
   Book, FileText, CheckSquare, Tag, Settings, AlertCircle, Wrench, Bell, UserCircle,
@@ -146,11 +146,7 @@ const Sidebar = ({ onLogout }) => {
 
       </nav>
 
-      <div className="p-4 border-t border-gray-700 mt-auto">
-        <button className="w-full flex items-center justify-center py-2 px-4 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md text-sm font-medium transition duration-150">
-          Collapse sidebar
-        </button>
-      </div>
+     
 
       <div className="p-4 border-t border-gray-700">
         <button
@@ -165,7 +161,7 @@ const Sidebar = ({ onLogout }) => {
 };
 
 // --- INLINED CardWidget Component ---
-const CardWidget = ({ title, children, onDelete, onMoreOptions }) => {
+const CardWidget = ({ title, children, onDelete, onMoreOptions ,  }) => {
   return (
     <div className="bg-white rounded-xl shadow-md p-6 flex flex-col h-full">
       <div className="flex justify-between items-center mb-4">
@@ -192,6 +188,7 @@ const CardWidget = ({ title, children, onDelete, onMoreOptions }) => {
 
 // --- INLINED Dashboard Component ---
 const Dashboard = () => {
+  const naviagte = useNavigate()
   const recentMedia = [
     { id: 1, type: 'video', thumbnail: 'https://placehold.co/100x60/a78bfa/ffffff?text=Video1', title: 'Mission Alpha Capture' },
     { id: 2, type: 'image', thumbnail: 'https://placehold.co/100x60/818cf8/ffffff?text=Image1', title: 'Inspection Photo 1' },
@@ -211,7 +208,10 @@ const Dashboard = () => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <CardWidget title="User Profile" onDelete={() => handleCardDelete('User Profile')}>
-        <div className="flex flex-col items-center justify-center h-full text-center">
+        <div 
+        
+     
+        className="flex flex-col items-center justify-center h-full text-center">
           <UserCircle className="w-20 h-20 text-gray-400 mb-4" />
           <h4 className="text-xl font-bold text-gray-800">m osman</h4>
           <div className="mt-4 text-gray-600 text-sm space-y-2">
@@ -219,7 +219,11 @@ const Dashboard = () => {
             <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Average flight time: -</p>
             <p className="flex items-center"><Rocket className="w-4 h-4 mr-2 text-purple-500" /> Number of flights: -</p>
           </div>
-          <button className="mt-6 text-blue-600 hover:text-blue-700 font-medium text-sm">Open profile</button>
+          <button 
+             onClick={()=>{
+          naviagte("/manage/profile-settings")
+        }}
+          className="mt-6 text-blue-600 hover:text-blue-700 font-medium text-sm">Open profile</button>
         </div>
       </CardWidget>
 
@@ -247,11 +251,17 @@ const Dashboard = () => {
             <p className="text-gray-500">No recent incidents.</p>
           )}
         </ul>
-        <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
+        <button 
+        
+        onClick={()=>{naviagte("/manage/incidents")}}
+
+        className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
       </CardWidget>
 
       <CardWidget title="Recent media" onDelete={() => handleCardDelete('Recent Media')}>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4"
+        
+        >
           {recentMedia.length > 0 ? (
             recentMedia.map(media => (
               <div key={media.id} className="relative group rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -273,8 +283,12 @@ const Dashboard = () => {
         <div className="flex flex-col items-center justify-center h-full text-center">
           <Wrench className="w-16 h-16 text-gray-400 mb-4" />
           <p className="text-gray-600">Upcoming maintenance schedules and logs will be displayed here.</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
+          <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm"
+        onClick={()=>{naviagte("/manage/maintenance")}}
+          
+          >View all</button>
         </div>
+    
       </CardWidget>
     </div>
   );
