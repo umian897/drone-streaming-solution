@@ -6,7 +6,8 @@ import {
   LogOut, ChevronDown, ChevronUp, PlusCircle, MoreVertical, Trash2, MapPin, Activity, Clock, Image,
   Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, Calendar, Users, Map, ListChecks, File, PlayCircle,
   Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Search, Play, Pause, FastForward, Rewind, Volume2,
-  List, Check, Square, MinusCircle, Folder, Image as ImageIcon // Added Folder and ImageIcon for media folders
+  List, Check, Square, MinusCircle, Folder, Image as ImageIcon, // Added Folder and ImageIcon for media folders
+  BellIcon
 } from 'lucide-react';
 
 // Import the authentication page component. Path is correct.
@@ -2994,14 +2995,102 @@ const Tags = () => {
 
 
 // --- INLINED ProfileSettings Component ---
+
 const ProfileSettings = () => {
+  const [formData, setFormData] = useState({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    phone: '+1 (555) 123-4567',
+    bio: 'Digital designer & photographer based in San Francisco.'
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // Handle profile update logic here
+    console.log('Profile updated:', formData);
+  };
+
   return (
     <div className="p-6 bg-white rounded-xl shadow-md">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Account Settings (Profile)</h2>
-      <p className="text-gray-600">Update your personal information and preferences.</p>
+      <p className="text-gray-600 mb-6">Update your personal information and preferences.</p>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            Full Name
+          </label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            Email Address
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+            Phone Number
+          </label>
+          <input
+            type="tel"
+            id="phone"
+            name="phone"
+            value={formData.phone}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+            Bio
+          </label>
+          <textarea
+            id="bio"
+            name="bio"
+            rows={3}
+            value={formData.bio}
+            onChange={handleChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+        >
+          Save Changes
+        </button>
+      </form>
     </div>
   );
 };
+
 
 // --- INLINED NotificationPreferences Component ---
 const NotificationPreferences = () => {
@@ -3481,6 +3570,10 @@ function App() {
             <div className="flex-1 flex flex-col overflow-hidden">
               <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
                 <h1 className="text-2xl font-semibold text-gray-800">AirVibe Dashboard</h1>
+                <BellIcon size={18} className='text-xl cursor-pointer'
+                onClick={()=>{
+                  window.location.replace("/manage/notification-preferences")
+                }}/>
               </header>
 
               {/* Message Box for general app messages */}
