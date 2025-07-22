@@ -1,18 +1,20 @@
- import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react'; // This should be your ONLY React import line
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  BellIcon, // Ensure BellIcon is imported if not already
   LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
   Book, FileText, CheckSquare, Tag, Settings, AlertCircle, Wrench, Bell, UserCircle,
   LogOut, ChevronDown, ChevronUp, PlusCircle, MoreVertical, Trash2, MapPin, Activity, Clock, Image,
   Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, Calendar, Users, Map, ListChecks, File, PlayCircle,
   Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Search, Play, Pause, FastForward, Rewind, Volume2,
-  List, Check, Square, MinusCircle, Folder, Image as ImageIcon, // Added Folder and ImageIcon for media folders
-  BellIcon
+  List, Check, Square, MinusCircle, Folder, Image as ImageIcon,
+  Mail,
+  Key
 } from 'lucide-react';
-
+// ... rest of your code
 // Import the authentication page component. Path is correct.
 import AuthPage from './pages/auth/AuthPage';
-
+import { io } from 'socket.io-client'; 
 // --- INLINED Sidebar Component ---
 const Sidebar = ({ onLogout }) => {
   const location = useLocation();
@@ -295,36 +297,25 @@ const Dashboard = () => {
   );
 };
 
-// --- INLINED LiveOperations Component ---
-const LiveOperations = ({ onCaptureMedia }) => { // Receive onCaptureMedia prop
-  const [selectedDrone, setSelectedDrone] = useState('drone1');
-  const [telemetry, setTelemetry] = useState({
-    altitude: 150,
-    speed: 12,
-    battery: 85,
-    signal: 'Excellent',
-    flightMode: 'Auto',
-    latitude: 34.0522,
-    longitude: -118.2437,
-    heading: 'North-East'
-  });
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTelemetry(prev => ({
-        ...prev,
-        altitude: Math.floor(Math.random() * 200) + 50,
-        speed: (Math.random() * 20 + 5).toFixed(1),
-        battery: Math.max(0, prev.battery - Math.floor(Math.random() * 2)),
-        latitude: (34.0522 + (Math.random() - 0.5) * 0.01).toFixed(4),
-        longitude: (-118.2437 + (Math.random() - 0.5) * 0.01).toFixed(4),
-      }));
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+// --- INLINED LiveOperations Component ---
+const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displayMessage }) => { // Receive new props
+  const [selectedDrone, setSelectedDrone] = useState('DRN-SIM-001'); // Default to simulated drone ID
+
+  // Use the live telemetry received from props
+  const currentTelemetry = liveTelemetry[selectedDrone] || {
+    altitude: 0,
+    speed: 0,
+    battery_percent: 0,
+    signal: 'No Signal',
+    flight_mode: 'N/A',
+    latitude: 0,
+    longitude: 0,
+    heading: 'N/A' // This is not coming from backend telemetry yet, keep as placeholder
+  };
 
   const drones = [
-    { id: 'drone1', name: 'Drone Alpha', videoUrl: 'https://placehold.co/600x400/3498db/ffffff?text=Drone+Alpha+Feed' },
+    { id: 'DRN-SIM-001', name: 'Simulated Drone 1', videoUrl: 'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed' },
     { id: 'drone2', name: 'Drone Beta', videoUrl: 'https://placehold.co/600x400/2ecc71/ffffff?text=Drone+Beta+Feed' },
     { id: 'drone3', name: 'Drone Gamma', videoUrl: 'https://placehold.co/600x400/e74c3c/ffffff?text=Drone+Gamma+Feed' },
   ];
@@ -332,37 +323,43 @@ const LiveOperations = ({ onCaptureMedia }) => { // Receive onCaptureMedia prop
   const currentDrone = drones.find(d => d.id === selectedDrone);
 
   const handleTakePhoto = () => {
-    const newImage = {
-      title: `${currentDrone.name} Photo - ${new Date().toLocaleString()}`,
-      type: 'image',
-      url: `https://placehold.co/600x400/${Math.floor(Math.random()*16777215).toString(16)}/ffffff?text=Captured+Image`,
-      thumbnail: `https://placehold.co/300x200/${Math.floor(Math.random()*16777215).toString(16)}/ffffff?text=Captured+Image`,
-      droneId: selectedDrone,
-      missionId: 'Live Capture', // Placeholder mission ID for live captures
-      timestamp: new Date().toISOString(),
-      gps: `${telemetry.latitude}, ${telemetry.longitude}`,
-      tags: ['live-capture', 'image'],
-      description: 'Image captured live during operation.',
-    };
-    onCaptureMedia(newImage);
-    alert('Photo captured and saved to Media Library!');
+    if (sendDroneCommand) {
+      sendDroneCommand(selectedDrone, 'take_photo');
+    } else {
+      displayMessage("Backend connection not ready to send commands.", 'error');
+    }
   };
 
   const handleRecordVideo = () => {
-    const newVideo = {
-      title: `${currentDrone.name} Video - ${new Date().toLocaleString()}`,
-      type: 'video',
-      url: 'https://www.w3schools.com/html/mov_bbb.mp4', // Example video URL
-      thumbnail: `https://placehold.co/300x200/${Math.floor(Math.random()*16777215).toString(16)}/ffffff?text=Captured+Video`,
-      droneId: selectedDrone,
-      missionId: 'Live Capture', // Placeholder mission ID for live captures
-      timestamp: new Date().toISOString(),
-      gps: `${telemetry.latitude}, ${telemetry.longitude}`,
-      tags: ['live-capture', 'video'],
-      description: 'Video recorded live during operation.',
-    };
-    onCaptureMedia(newVideo);
-    alert('Video recorded and saved to Media Library!');
+    if (sendDroneCommand) {
+      sendDroneCommand(selectedDrone, 'record_video_start');
+    } else {
+      displayMessage("Backend connection not ready to send commands.", 'error');
+    }
+  };
+
+  const handleStopRecordVideo = () => {
+    if (sendDroneCommand) {
+      sendDroneCommand(selectedDrone, 'record_video_stop');
+    } else {
+      displayMessage("Backend connection not ready to send commands.", 'error');
+    }
+  };
+
+  const handleTakeoff = () => {
+    if (sendDroneCommand) {
+      sendDroneCommand(selectedDrone, 'takeoff', { altitude: 10 }); // Example: Takeoff to 10m
+    } else {
+      displayMessage("Backend connection not ready to send commands.", 'error');
+    }
+  };
+
+  const handleLand = () => {
+    if (sendDroneCommand) {
+      sendDroneCommand(selectedDrone, 'land');
+    } else {
+      displayMessage("Backend connection not ready to send commands.", 'error');
+    }
   };
 
 
@@ -385,15 +382,21 @@ const LiveOperations = ({ onCaptureMedia }) => { // Receive onCaptureMedia prop
             ))}
           </select>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex space-x-2">
+          <button onClick={handleTakeoff} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors shadow-md">
+            <Rocket className="w-5 h-5 mr-2" /> Takeoff
+          </button>
+          <button onClick={handleLand} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors shadow-md">
+            <Home className="w-5 h-5 mr-2" /> Land
+          </button>
           <button onClick={handleTakePhoto} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors shadow-md">
             <Camera className="w-5 h-5 mr-2" /> Take Photo
           </button>
           <button onClick={handleRecordVideo} className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors shadow-md">
             <VideoIcon className="w-5 h-5 mr-2" /> Record Video
           </button>
-          <button className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors shadow-md">
-            <Home className="w-5 h-5 mr-2" /> Return to Home
+          <button onClick={handleStopRecordVideo} className="flex items-center px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors shadow-md">
+            <XCircle className="w-5 h-5 mr-2" /> Stop Recording
           </button>
         </div>
       </div>
@@ -411,10 +414,10 @@ const LiveOperations = ({ onCaptureMedia }) => { // Receive onCaptureMedia prop
           )}
           {/* Telemetry Overlay (optional, can be moved to a separate panel) */}
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-60 text-white p-3 rounded-lg text-sm space-y-1">
-            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Alt: {telemetry.altitude}m</p>
-            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Speed: {telemetry.speed} m/s</p>
-            <p className="flex items-center"><Battery className="w-4 h-4 mr-2" /> Bat: {telemetry.battery}%</p>
-            <p className="flex items-center"><Signal className="w-4 h-4 mr-2" /> Signal: {telemetry.signal}</p>
+            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Alt: {currentTelemetry.altitude}m</p>
+            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Speed: {currentTelemetry.speed} m/s</p>
+            <p className="flex items-center"><Battery className="w-4 h-4 mr-2" /> Bat: {currentTelemetry.battery_percent}%</p>
+            <p className="flex items-center"><Signal className="w-4 h-4 mr-2" /> Signal: {currentTelemetry.signal}</p>
           </div>
         </div>
 
@@ -425,21 +428,21 @@ const LiveOperations = ({ onCaptureMedia }) => { // Receive onCaptureMedia prop
             <MapPin className="w-16 h-16 text-blue-400 mb-3" />
             <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
             <p className="text-center text-sm">Drone location and flight path will be displayed here.</p>
-            <p className="text-xs text-gray-500 mt-2">Current GPS: Lat {telemetry.latitude}, Lng {telemetry.longitude}</p>
-            <p className="text-xs text-gray-500">Heading: {telemetry.heading}</p>
+            <p className="text-xs text-gray-500 mt-2">Current GPS: Lat {currentTelemetry.latitude}, Lng {currentTelemetry.longitude}</p>
+            <p className="text-xs text-gray-500">Heading: {currentTelemetry.heading}</p>
             <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View Full Map</button>
           </div>
 
           {/* Detailed Telemetry Panel */}
           <div className="bg-white rounded-xl shadow-md p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Detailed Telemetry</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Detailed Telemetry ({selectedDrone})</h3>
             <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
-              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-blue-500" /> Altitude: <span className="font-medium ml-1">{telemetry.altitude}m</span></p>
-              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-green-500" /> Speed: <span className="font-medium ml-1">{telemetry.speed} m/s</span></p>
-              <p className="flex items-center"><Battery className="w-4 h-4 mr-2 text-red-500" /> Battery: <span className="font-medium ml-1">{telemetry.battery}%</span></p>
-              <p className="flex items-center"><Signal className="w-4 h-4 mr-2 text-purple-500" /> Signal: <span className="font-medium ml-1">{telemetry.signal}</span></p>
-              <p className="flex items-center col-span-2"><Compass className="w-4 h-4 mr-2 text-yellow-500" /> Flight Mode: <span className="font-medium ml-1">{telemetry.flightMode}</span></p>
-              <p className="flex items-center col-span-2"><MapPin className="w-4 h-4 mr-2 text-indigo-500" /> Lat/Lng: <span className="font-medium ml-1">{telemetry.latitude}, {telemetry.longitude}</span></p>
+              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-blue-500" /> Altitude: <span className="font-medium ml-1">{currentTelemetry.altitude}m</span></p>
+              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-green-500" /> Speed: <span className="font-medium ml-1">{currentTelemetry.speed} m/s</span></p>
+              <p className="flex items-center"><Battery className="w-4 h-4 mr-2 text-red-500" /> Battery: <span className="font-medium ml-1">{currentTelemetry.battery_percent}%</span></p>
+              <p className="flex items-center"><Signal className="w-4 h-4 mr-2 text-purple-500" /> Signal: <span className="font-medium ml-1">{currentTelemetry.signal}</span></p>
+              <p className="flex items-center col-span-2"><Compass className="w-4 h-4 mr-2 text-yellow-500" /> Flight Mode: <span className="font-medium ml-1">{currentTelemetry.flight_mode}</span></p>
+              <p className="flex items-center col-span-2"><MapPin className="w-4 h-4 mr-2 text-indigo-500" /> Lat/Lng: <span className="font-medium ml-1">{currentTelemetry.latitude}, {currentTelemetry.longitude}</span></p>
             </div>
           </div>
         </div>
@@ -2996,108 +2999,343 @@ const Tags = () => {
 
 // --- INLINED ProfileSettings Component ---
 
-const ProfileSettings = () => {
-  const [formData, setFormData] = useState({
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    phone: '+1 (555) 123-4567',
-    bio: 'Digital designer & photographer based in San Francisco.'
-  });
+// --- ProfileSettings Component (full implementation) ---
+const ProfileSettings = ({ user, setUser, displayMessage }) => {
+  const [newName, setNewName] = useState(user.name);
+  const [newEmail, setNewEmail] = useState(user.email);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [newProfilePictureUrl, setNewProfilePictureUrl] = useState(user.profilePicture);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleUpdateProfile = (e) => {
+    e.preventDefault();
+    // In a real application, you would send this data to your backend API
+    setUser(prev => ({ ...prev, name: newName, email: newEmail }));
+    displayMessage("Profile updated successfully!", 'success');
   };
 
-  const handleSubmit = (e) => {
+  const handleChangePassword = (e) => {
     e.preventDefault();
-    // Handle profile update logic here
-    console.log('Profile updated:', formData);
+    if (newPassword !== confirmNewPassword) {
+      displayMessage("New password and confirmation do not match.", 'error');
+      return;
+    }
+    if (newPassword.length < 6) { // Basic validation
+      displayMessage("Password must be at least 6 characters long.", 'error');
+      return;
+    }
+    // In a real application, you would send currentPassword and newPassword to your backend API
+    // For simulation, we just clear the fields and show success.
+    displayMessage("Password changed successfully!", 'success');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+  };
+
+  const handleUpdateProfilePicture = (e) => {
+    e.preventDefault();
+    if (newProfilePictureUrl.trim() === '') {
+      displayMessage("Please enter a valid image URL.", 'error');
+      return;
+    }
+    setUser(prev => ({ ...prev, profilePicture: newProfilePictureUrl }));
+    displayMessage("Profile picture updated!", 'success');
   };
 
   return (
-    <div className="p-6 bg-white rounded-xl shadow-md">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Account Settings (Profile)</h2>
-      <p className="text-gray-600 mb-6">Update your personal information and preferences.</p>
-      
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-            Full Name
-          </label>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col items-center">
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">User Profile Settings</h2>
+
+      {/* Profile Header and Picture */}
+      <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl flex flex-col items-center">
+        <div className="relative mb-4">
+          <img
+            src={user.profilePicture}
+            alt="Profile"
+            className="w-32 h-32 rounded-full object-cover border-4 border-blue-400 shadow-lg"
+            onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/150x150/cccccc/333333?text=User'; }}
+          />
+          <button
+            onClick={() => { /* Trigger modal or input for new image URL */ }}
+            className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 shadow-md hover:bg-blue-700 transition-colors"
+            title="Change Profile Picture"
+          >
+            <Edit className="w-5 h-5" />
+          </button>
+        </div>
+        <h3 className="text-2xl font-semibold text-gray-800">{user.name}</h3>
+        <p className="text-gray-600">{user.email}</p>
+
+        {/* Profile Picture Update Form */}
+        <form onSubmit={handleUpdateProfilePicture} className="mt-6 w-full flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
           <input
-            type="text"
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            type="url"
+            placeholder="New Profile Picture URL"
+            value={newProfilePictureUrl}
+            onChange={(e) => setNewProfilePictureUrl(e.target.value)}
+            className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
           />
-        </div>
+          <button
+            type="submit"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+          >
+            <Upload className="w-5 h-5 inline-block mr-2" /> Update Picture
+          </button>
+        </form>
+      </div>
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email Address
-          </label>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+      {/* Account Information Section */}
+      <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
+        <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Account Information</h3>
+        <form onSubmit={handleUpdateProfile} className="space-y-6">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+              <UserCircle className="w-5 h-5 text-gray-400 ml-3" />
+              <input
+                type="text"
+                id="name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="flex-1 p-3 bg-transparent outline-none"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+              <Mail className="w-5 h-5 text-gray-400 ml-3" />
+              <input
+                type="email"
+                id="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                className="flex-1 p-3 bg-transparent outline-none"
+                required
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+            >
+              Save Profile Changes
+            </button>
+          </div>
+        </form>
+      </div>
 
-        <div>
-          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-            Phone Number
-          </label>
-          <input
-            type="tel"
-            id="phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+      {/* Change Password Section */}
+      <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
+        <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Change Password</h3>
+        <form onSubmit={handleChangePassword} className="space-y-6">
+          <div>
+            <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+            <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+              <Key className="w-5 h-5 text-gray-400 ml-3" />
+              <input
+                type="password"
+                id="currentPassword"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="flex-1 p-3 bg-transparent outline-none"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+            <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+              <Key className="w-5 h-5 text-gray-400 ml-3" />
+              <input
+                type="password"
+                id="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="flex-1 p-3 bg-transparent outline-none"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+            <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+              <Key className="w-5 h-5 text-gray-400 ml-3" />
+              <input
+                type="password"
+                id="confirmNewPassword"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                className="flex-1 p-3 bg-transparent outline-none"
+                required
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+            >
+              Change Password
+            </button>
+          </div>
+        </form>
+      </div>
 
-        <div>
-          <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
-            Bio
-          </label>
-          <textarea
-            id="bio"
-            name="bio"
-            rows={3}
-            value={formData.bio}
-            onChange={handleChange}
-            className="w-full p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          />
+      {/* Flight Statistics Section */}
+      <div className="bg-white rounded-xl shadow-md p-8 w-full max-w-2xl">
+        <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Flight Statistics</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+          <div className="flex flex-col items-center p-4 bg-blue-50 rounded-lg shadow-sm">
+            <Activity className="w-10 h-10 text-blue-600 mb-3" />
+            <p className="text-sm text-gray-600">Total Flights</p>
+            <p className="text-3xl font-bold text-blue-800">{user.totalFlights}</p>
+          </div>
+          <div className="flex flex-col items-center p-4 bg-indigo-50 rounded-lg shadow-sm">
+            <Clock className="w-10 h-10 text-indigo-600 mb-3" />
+            <p className="text-sm text-gray-600">Total Flight Time</p>
+            <p className="text-3xl font-bold text-indigo-800">{user.totalFlightTime}</p>
+          </div>
+          <div className="flex flex-col items-center p-4 bg-purple-50 rounded-lg shadow-sm">
+            <Rocket className="w-10 h-10 text-purple-600 mb-3" />
+            <p className="text-sm text-gray-600">Avg. Flight Time</p>
+            <p className="text-3xl font-bold text-purple-800">{user.averageFlightTime}</p>
+          </div>
         </div>
-
-        <button
-          type="submit"
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-        >
-          Save Changes
-        </button>
-      </form>
+      </div>
     </div>
   );
 };
 
+// --- NotificationsPage Component (full implementation) ---
+const NotificationsPage = ({ notifications, setNotifications, displayMessage }) => {
+  const [filter, setFilter] = useState('all'); // 'all', 'unread', 'read'
 
-// --- INLINED NotificationPreferences Component ---
-const NotificationPreferences = () => {
+  // Mark a single notification as read
+  const markAsRead = (id) => {
+    setNotifications(prev => prev.map(notif =>
+      notif.id === id ? { ...notif, read: true } : notif
+    ));
+    displayMessage("Notification marked as read.", 'info');
+  };
+
+  // Mark all notifications as read
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+    displayMessage("All notifications marked as read.", 'info');
+  };
+
+  // Delete a single notification
+  const deleteNotification = (id) => {
+    if (window.confirm("Are you sure you want to delete this notification?")) {
+      setNotifications(prev => prev.filter(notif => notif.id !== id));
+      displayMessage("Notification deleted.", 'info');
+    }
+  };
+
+  // Delete all read notifications
+  const deleteAllRead = () => {
+    if (window.confirm("Are you sure you want to delete all read notifications?")) {
+      setNotifications(prev => prev.filter(notif => !notif.read));
+      displayMessage("All read notifications deleted.", 'info');
+    }
+  };
+
+  const filteredNotifications = notifications.filter(notif => {
+    if (filter === 'unread') return !notif.read;
+    if (filter === 'read') return notif.read;
+    return true; // 'all' filter
+  });
+
   return (
-    <div className="p-6 bg-white rounded-xl shadow-md">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Notification Preferences</h2>
-      <p className="text-gray-600">Configure how you receive system notifications.</p>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Notifications</h2>
+
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
+        <div className="flex space-x-2 bg-white p-2 rounded-lg shadow-sm">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('unread')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filter === 'unread' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Unread ({notifications.filter(n => !n.read).length})
+          </button>
+          <button
+            onClick={() => setFilter('read')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filter === 'read' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Read
+          </button>
+        </div>
+
+        <div className="flex space-x-3">
+          <button
+            onClick={markAllAsRead}
+            className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors shadow-md text-sm"
+          >
+            <Check className="w-4 h-4 mr-2" /> Mark All Read
+          </button>
+          <button
+            onClick={deleteAllRead}
+            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors shadow-md text-sm"
+          >
+            <Trash2 className="w-4 h-4 mr-2" /> Delete Read
+          </button>
+        </div>
+      </div>
+
+      {filteredNotifications.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No notifications found.</p>
+        </div>
+      ) : (
+        <div className="space-y-4 flex-1">
+          {filteredNotifications.map(notif => (
+            <div
+              key={notif.id}
+              className={`flex items-start p-4 rounded-lg shadow-sm transition-all duration-200 ${
+                notif.read ? 'bg-white text-gray-600 border border-gray-200' : 'bg-blue-50 text-blue-800 border border-blue-200 font-semibold'
+              }`}
+            >
+              <div className="flex-shrink-0 mr-4 mt-1">
+                {notif.type === 'alert' && <AlertCircle className="w-6 h-6 text-red-500" />}
+                {notif.type === 'info' && <Info className="w-6 h-6 text-blue-500" />}
+                {notif.type === 'success' && <Check className="w-6 h-6 text-green-500" />}
+              </div>
+              <div className="flex-1">
+                <p className="text-lg font-medium">{notif.message}</p>
+                <p className="text-sm text-gray-500 mt-1">{new Date(notif.timestamp).toLocaleString()}</p>
+              </div>
+              <div className="flex-shrink-0 flex space-x-2 ml-4">
+                {!notif.read && (
+                  <button
+                    onClick={() => markAsRead(notif.id)}
+                    className="p-2 rounded-full text-green-600 hover:bg-green-100 transition-colors"
+                    title="Mark as Read"
+                  >
+                    <Check className="w-5 h-5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteNotification(notif.id)}
+                  className="p-2 rounded-full text-red-600 hover:bg-red-100 transition-colors"
+                  title="Delete Notification"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -3468,155 +3706,260 @@ function IncidentSection({ incidents, setIncidents, displayMessage }) {
 
 
 // --- Main App Component (Main Export) ---
-function App() {
+// --- Main App Component (Main Export) ---
+const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [mediaItems, setMediaItems] = useState([ // Lift mediaItems state to App
-    {
-      id: 'm1',
-      type: 'video',
-      title: 'Mission Alpha - Perimeter Scan',
-      url: 'https://www.w3schools.com/html/mov_bbb.mp4', // Example video URL
-      thumbnail: 'https://placehold.co/300x200/4a90e2/ffffff?text=Video+Thumbnail+1',
-      droneId: 'DRN-AV-001',
-      missionId: 'm1',
-      timestamp: '2025-07-15T10:30:00Z',
-      gps: '34.0522, -118.2437',
-      tags: ['perimeter', 'security', 'day-flight'],
-      description: 'Automated perimeter scan of North Campus during Mission Alpha.',
-    },
-    {
-      id: 'm2',
-      type: 'image',
-      title: 'Factory Roof Inspection',
-      url: 'https://placehold.co/600x400/7ed321/ffffff?text=Factory+Roof+Image',
-      thumbnail: 'https://placehold.co/300x200/7ed321/ffffff?text=Image+Thumbnail+2',
-      droneId: 'DRN-SG-002',
-      missionId: 'm2',
-      timestamp: '2025-07-20T09:45:00Z',
-      gps: '34.0522, -118.2437',
-      tags: ['inspection', 'factory', 'roof'],
-      description: 'High-resolution image captured during routine factory roof inspection.',
-    },
-    {
-      id: 'm3',
-      type: 'video',
-      title: 'Bridge Structural Analysis',
-      url: 'https://www.w3schools.com/html/movie.mp4', // Another example video URL
-      thumbnail: 'https://placehold.co/300x200/f5a623/ffffff?text=Video+Thumbnail+3',
-      droneId: 'DRN-AD-003',
-      missionId: 'm3',
-      timestamp: '2025-07-25T14:00:00Z',
-      gps: '34.0522, -118.2437',
-      tags: ['infrastructure', 'bridge', 'analysis'],
-      description: 'Detailed video footage for structural analysis of the main bridge.',
-    },
-  ]);
+  const [liveTelemetry, setLiveTelemetry] = useState({}); // State for live telemetry data
+  const [notifications, setNotifications] = useState([]); // State for notifications
+  const [message, setMessage] = useState(''); // State for toast messages
+  const [messageType, setMessageType] = useState(''); // Type of toast message (info, success, error)
 
-  // States for Maintenance and Incidents (moved from the previous response's App component)
-  const [maintenanceParts, setMaintenanceParts] = useState([]);
-  const [incidents, setIncidents] = useState([]);
-  const [message, setMessage] = useState({ text: '', type: '' }); // For temporary messages
+  const navigate = useNavigate();
 
-  // Effect to load data from localStorage on initial render (for maintenance and incidents)
+  // Function to display toast messages (defined early so useEffect can use it)
+  const displayMessage = useCallback((text, type = 'info') => {
+    setMessage(text);
+    setMessageType(type);
+    setTimeout(() => {
+      setMessage('');
+      setMessageType('');
+    }, 3000);
+  }, []); // Empty dependency array means it's created once and doesn't change
+
+  // Initialize Socket.IO connection
+  const socket = useRef(null);
+
   useEffect(() => {
-      const storedMaintenanceParts = localStorage.getItem('maintenanceParts');
-      if (storedMaintenanceParts) {
-          setMaintenanceParts(JSON.parse(storedMaintenanceParts));
+    // Only connect if authenticated and socket not already connected
+    if (isAuthenticated && !socket.current) {
+      const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
+      const newSocket = io(FLASK_BACKEND_WS_URL);
+      socket.current = newSocket; // Assign to ref
+
+      newSocket.on('connect', () => {
+        console.log('Connected to Flask Socket.IO backend!');
+        displayMessage('Connected to real-time backend!', 'success');
+        newSocket.emit('register_as_frontend'); // Register this client as a frontend
+      });
+
+      newSocket.on('disconnect', () => {
+        console.log('Disconnected from Flask Socket.IO backend.');
+        displayMessage('Disconnected from real-time backend.', 'error');
+      });
+
+      newSocket.on('drone_telemetry_update', (data) => { // Changed from 'telemetry_data' to 'drone_telemetry_update' to match backend
+        setLiveTelemetry(prev => ({
+          ...prev,
+          [data.drone_id]: data.telemetry
+        }));
+      });
+
+      newSocket.on('new_notification', (data) => { // Changed from 'notification' to 'new_notification' to match backend
+        console.log('New notification:', data);
+        const newNotification = {
+          id: Date.now(), // Unique ID for the notification
+          message: data.message,
+          type: data.type || 'info', // 'info', 'alert', 'success'
+          read: false,
+          timestamp: new Date().toISOString(),
+        };
+        setNotifications(prev => [newNotification, ...prev]);
+        displayMessage(data.message, newNotification.type);
+      });
+
+      newSocket.on('command_status_report', (data) => { // Changed from 'drone_command_response' to 'command_status_report' to match backend
+        displayMessage(`Command for ${data.drone_id}: ${data.status} - ${data.message}`, data.status === 'success' ? 'success' : 'error');
+      });
+    }
+
+    // Clean up on unmount or when isAuthenticated changes
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+        socket.current = null;
       }
-      const storedIncidents = localStorage.getItem('incidents');
-      if (storedIncidents) {
-          setIncidents(JSON.parse(storedIncidents));
+    };
+  }, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
+
+  // Function to send drone commands via REST API (as backend expects REST for commands)
+  const sendDroneCommand = async (droneId, command, params = {}) => {
+    if (socket.current && socket.current.connected) {
+      try {
+        const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
+        const response = await fetch(`${FLASK_BACKEND_REST_URL}/api/command_drone/${droneId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, params }),
+        });
+        const data = await response.json();
+        console.log('Command API response:', data);
+      } catch (error) {
+        console.error('Error sending command to backend:', error);
+        displayMessage('Failed to send command to backend.', 'error');
       }
-  }, []);
-
-  // Effects to save data to localStorage whenever maintenanceParts or incidents change
-  useEffect(() => {
-      localStorage.setItem('maintenanceParts', JSON.stringify(maintenanceParts));
-  }, [maintenanceParts]);
-
-  useEffect(() => {
-      localStorage.setItem('incidents', JSON.stringify(incidents));
-  }, [incidents]);
-
-  // Function to display temporary messages (passed to children components)
-  const displayMessage = (text, type) => {
-      setMessage({ text, type });
-      setTimeout(() => {
-          setMessage({ text: '', type: '' }); // Clear message after 3 seconds
-      }, 3000);
+    } else {
+      displayMessage('Not connected to backend WebSocket. Command not sent.', 'error');
+    }
   };
 
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
+    navigate('/'); // Redirect to dashboard after login
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    navigate('/auth'); // Redirect to login page
   };
+
+  // Placeholder data for other components (now part of App state)
+  const [mediaItems, setMediaItems] = useState([
+    { id: 'v1', type: 'video', src: 'https://www.w3schools.com/html/mov_bbb.mp4', thumb: 'https://placehold.co/150x100/3498db/ffffff?text=Video1', title: 'Mission Alpha Flight', description: 'Flight over North Campus.', date: '2025-07-15' },
+    { id: 'i1', type: 'image', src: 'https://placehold.co/600x400/2ecc71/ffffff?text=Inspection+1', thumb: 'https://placehold.co/150x100/2ecc71/ffffff?text=Image1', title: 'Bridge Inspection Photo', description: 'Close-up of pillar structure.', date: '2025-07-16' },
+  ]);
+
+  const [incidents, setIncidents] = useState([
+    { id: 'i-001', type: 'alert', message: 'Unauthorized drone detected in restricted airspace.', timestamp: '2025-07-21T10:00:00Z', resolved: false },
+    { id: 'i-002', type: 'warning', message: 'Drone Battery Level Critical (DRN-005).', timestamp: '2025-07-20T14:30:00Z', resolved: true },
+  ]);
+
+  const [maintenanceParts, setMaintenanceParts] = useState([
+    { id: 'p1', name: 'Propeller Set A', status: 'Available', lastMaintenance: '2025-06-01', nextMaintenance: '2025-08-01' },
+    { id: 'p2', name: 'Flight Controller v2', status: 'In Repair', lastMaintenance: '2025-07-10', nextMaintenance: 'N/A' },
+  ]);
+
+  // Dummy user data for ProfileSettings
+  const [userProfile, setUserProfile] = useState({
+    name: 'M Osman',
+    email: 'm.osman@example.com',
+    profilePicture: 'https://placehold.co/150x150/a78bfa/ffffff?text=Profile', // Placeholder image
+    totalFlights: 150,
+    totalFlightTime: '250h 30m',
+    averageFlightTime: '1h 40m',
+  });
+
+  // Effects to load data from localStorage on initial render
+  useEffect(() => {
+    const storedMaintenanceParts = localStorage.getItem('maintenanceParts');
+    if (storedMaintenanceParts) {
+      setMaintenanceParts(JSON.parse(storedMaintenanceParts));
+    }
+    const storedIncidents = localStorage.getItem('incidents');
+    if (storedIncidents) {
+      setIncidents(JSON.parse(storedIncidents));
+    }
+    const storedUserProfile = localStorage.getItem('userProfile');
+    if (storedUserProfile) {
+      setUserProfile(JSON.parse(storedUserProfile));
+    }
+    const storedNotifications = localStorage.getItem('notifications');
+    if (storedNotifications) {
+      setNotifications(JSON.parse(storedNotifications));
+    }
+  }, []);
+
+  // Effects to save data to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('maintenanceParts', JSON.stringify(maintenanceParts));
+  }, [maintenanceParts]);
+
+  useEffect(() => {
+    localStorage.setItem('incidents', JSON.stringify(incidents));
+  }, [incidents]);
+
+  useEffect(() => {
+    localStorage.setItem('userProfile', JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   const handleCaptureMedia = (newMedia) => {
     setMediaItems(prevItems => [...prevItems, { id: `m${prevItems.length + 1}`, ...newMedia }]);
+    displayMessage("Media captured and saved to Media Library!", 'success');
   };
 
   return (
-    <div className="App">
-      {isAuthenticated ? (
-        // If authenticated, render the main application layout directly here
-        <Router>
-          <div className="flex min-h-screen bg-gray-100 font-sans">
+    <div className="flex min-h-screen bg-gray-100">
+      {/* The Router now wraps the entire application */}
+      <Router>
+        {isAuthenticated ? (
+          <div className="flex">
             <Sidebar onLogout={handleLogout} />
-
             <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header */}
               <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
-                <h1 className="text-2xl font-semibold text-gray-800">AirVibe Dashboard</h1>
-                <BellIcon size={18} className='text-xl cursor-pointer'
-                onClick={()=>{
-                  window.location.replace("/manage/notification-preferences")
-                }}/>
+                <h1 className="text-xl font-semibold text-gray-800">Drone Operations Dashboard</h1>
+                <div className="flex items-center space-x-4">
+                  {message && (
+                    <div className={`px-4 py-2 rounded-md text-white text-sm font-medium ${
+                      messageType === 'success' ? 'bg-green-500' :
+                      messageType === 'error' ? 'bg-red-500' :
+                      'bg-blue-500'
+                    }`}>
+                      {message}
+                    </div>
+                  )}
+                  <Link to="/notifications" className="relative p-2 rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <Bell className="h-6 w-6" />
+                    {notifications.filter(n => !n.read).length > 0 && (
+                      <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full">
+                        {notifications.filter(n => !n.read).length}
+                      </span>
+                    )}
+                  </Link>
+                  <button className="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
+                    <img className="h-8 w-8 rounded-full" src="https://placehold.co/40x40/cccccc/ffffff?text=U" alt="User avatar" />
+                    <span className="font-medium text-sm">m osman</span>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
               </header>
 
-              {/* Message Box for general app messages */}
-              {message.text && (
-                  <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white font-semibold transition-opacity duration-300 ${message.type === 'success' ? 'bg-green-500' : message.type === 'error' ? 'bg-red-500' : 'bg-blue-500'} opacity-100`}>
-                      {message.text}
-                  </div>
-              )}
-
-              <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
+              {/* Main Content Area */}
+              <main className="flex-1 p-6 bg-gray-100 overflow-y-auto">
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/live-operations" element={<LiveOperations onCaptureMedia={handleCaptureMedia} />} /> {/* Pass capture handler */}
+                  <Route path="/live-operations" element={<LiveOperations
+                    onCaptureMedia={handleCaptureMedia}
+                    liveTelemetry={liveTelemetry}
+                    sendDroneCommand={sendDroneCommand}
+                    displayMessage={displayMessage}
+                  />} />
                   <Route path="/missions" element={<Missions />} />
-                  {/* Asset Routes */}
-                  <Route path="/assets" element={<Drones />} /> {/* Default to Drones for /assets */}
+
+                  {/* Assets Routes */}
+                  <Route path="/assets" element={<Drones />} />
                   <Route path="/assets/drones" element={<Drones />} />
                   <Route path="/assets/ground-stations" element={<GroundStations />} />
                   <Route path="/assets/equipment" element={<Equipment />} />
                   <Route path="/assets/batteries" element={<Batteries />} />
+
                   {/* Library Routes */}
-                  <Route path="/library/media" element={<Media mediaItems={mediaItems} setMediaItems={setMediaItems} />} /> {/* Pass media state */}
+                  <Route path="/library/media" element={<Media mediaItems={mediaItems} setMediaItems={setMediaItems} />} />
                   <Route path="/library/files" element={<Files />} />
                   <Route path="/library/checklists" element={<Checklists />} />
                   <Route path="/library/tags" element={<Tags />} />
+
                   {/* Manage Routes */}
-                  <Route path="/manage/profile-settings" element={<ProfileSettings />} />
-                  <Route path="/manage/notification-preferences" element={<NotificationPreferences />} />
-                  {/* Replaced placeholder components with the full implementations */}
+                  <Route path="/manage/profile-settings" element={<ProfileSettings user={userProfile} setUser={setUserProfile} displayMessage={displayMessage} />} />
+                  <Route path="/notifications" element={<NotificationsPage notifications={notifications} setNotifications={setNotifications} displayMessage={displayMessage} />} />
                   <Route path="/manage/incidents" element={<IncidentSection incidents={incidents} setIncidents={setIncidents} displayMessage={displayMessage} />} />
                   <Route path="/manage/maintenance" element={<MaintenanceSection maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} displayMessage={displayMessage} />} />
                 </Routes>
               </main>
             </div>
           </div>
-        </Router>
-      ) : (
-        // If not authenticated, render the AuthPage
-        <AuthPage onLoginSuccess={handleLoginSuccess} />
-      )}
+        ) : (
+          // If not authenticated, render the AuthPage
+          <AuthPage onLoginSuccess={handleLoginSuccess} />
+        )}
+      </Router>
     </div>
   );
-}
+};
 
 export default App;
 
