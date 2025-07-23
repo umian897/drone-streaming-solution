@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'; // This should be your ONLY React import line
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'; // REMOVE BrowserRouter and as Router
 import {
   BellIcon, // Ensure BellIcon is imported if not already
   LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
@@ -314,11 +314,11 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
     heading: 'N/A' // This is not coming from backend telemetry yet, keep as placeholder
   };
 
-  const drones = [
-    { id: 'DRN-SIM-001', name: 'Simulated Drone 1', videoUrl: 'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed' },
-    { id: 'drone2', name: 'Drone Beta', videoUrl: 'https://placehold.co/600x400/2ecc71/ffffff?text=Drone+Beta+Feed' },
-    { id: 'drone3', name: 'Drone Gamma', videoUrl: 'https://placehold.co/600x400/e74c3c/ffffff?text=Drone+Gamma+Feed' },
-  ];
+  // const drones = [
+  //   { id: 'DRN-SIM-001', name: 'Simulated Drone 1', videoUrl: 'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed' },
+  //   { id: 'drone2', name: 'Drone Beta', videoUrl: 'https://placehold.co/600x400/2ecc71/ffffff?text=Drone+Beta+Feed' },
+  //   { id: 'drone3', name: 'Drone Gamma', videoUrl: 'https://placehold.co/600x400/e74c3c/ffffff?text=Drone+Gamma+Feed' },
+  // ];
 
   const currentDrone = drones.find(d => d.id === selectedDrone);
 
@@ -470,54 +470,50 @@ const Missions = () => {
   const [selectedMission, setSelectedMission] = useState(null); // For viewing details
 
   // Simulated mission data
-  const [missions, setMissions] = useState([
-    {
-      id: 'm1',
-      name: 'Site Survey - North Campus',
-      type: 'Pilot',
-      status: 'Completed',
-      drone: 'Drone Alpha',
-      operator: 'Pilot John Doe',
-      startDate: '2025-07-15',
-      endDate: '2025-07-15',
-      objectives: 'Comprehensive visual survey for construction progress.',
-      progress: 100,
-      media: [
-        { id: 1, type: 'image', url: 'https://placehold.co/100x60/a78bfa/ffffff?text=Img1', caption: 'Roof overview' },
-        { id: 2, type: 'video', url: 'https://placehold.co/100x60/818cf8/ffffff?text=Vid1', caption: 'Perimeter flight' },
-      ],
-      incidents: [],
-    },
-    {
-      id: 'm2',
-      name: 'Automated Security Patrol - Factory',
-      type: 'Ground Station',
-      status: 'Ongoing',
-      drone: 'Drone Beta',
-      operator: 'Ground Station Gamma',
-      startDate: '2025-07-20',
-      endDate: 'Ongoing',
-      objectives: 'Daily automated security checks of factory perimeter.',
-      progress: 75,
-      media: [],
-      incidents: [{ id: 1, description: 'Unexpected bird interference', time: '11:00 AM' }],
-    },
-    {
-      id: 'm3',
-      name: 'Planned Infrastructure Inspection',
-      type: 'Pilot',
-      status: 'Planned',
-      drone: 'Drone Alpha',
-      operator: 'Pilot Jane Smith',
-      startDate: '2025-07-25',
-      endDate: '2025-07-25',
-      objectives: 'Inspect bridge structure for cracks and integrity.',
-      progress: 0,
-      media: [],
-      incidents: [],
-    },
-  ]);
-
+  const [missions, setMissions] = useState([]); // Initialize as an empty array
+  const Missions = ({ missions, setMissions, displayMessage }) => {
+    // Inside the Missions component
+const handleAddMission = async () => {
+  if (!newMission.name || !newMission.drone || !newMission.startTime || !newMission.endTime) {
+    displayMessage("Please fill all required mission fields.", 'error');
+    return;
+  }
+  try {
+    const response = await fetch('http://localhost:5000/api/missions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newMission.name,
+        status: newMission.status,
+        drone_id: newMission.drone, // Ensure this matches backend field name
+        start_time: new Date(newMission.startTime).toISOString(), // Convert to ISO string
+        end_time: new Date(newMission.endTime).toISOString(),     // Convert to ISO string
+        progress: newMission.progress,
+        details: newMission.details,
+        waypoints: newMission.waypoints,
+        area: newMission.area,
+        payload: newMission.payload,
+        // Add other fields as per your Mission model in Flask
+      }),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setMissions(prev => [...prev, {
+        ...data,
+        startTime: data.start_time ? new Date(data.start_time) : null, // Convert back to Date object
+        endTime: data.end_time ? new Date(data.end_time) : null,     // Convert back to Date object
+      }]);
+      displayMessage("Mission added successfully!", 'success');
+      setShowAddModal(false);
+      setNewMission({ id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '', progress: 0, details: '', waypoints: 0, area: '', payload: '' });
+    } else {
+      displayMessage(`Failed to add mission: ${data.error || response.statusText}`, 'error');
+    }
+  } catch (error) {
+    console.error('Error adding mission:', error);
+    displayMessage('Error adding mission: Network issue or server offline.', 'error');
+  }
+};
   const handleCreateMission = (type) => {
     setCurrentView(`create-${type}`);
   };
@@ -1269,142 +1265,43 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
 
 
 // --- INLINED Drones Component ---
-const Drones = () => {
-  const [currentView, setCurrentView] = useState('list'); // 'list', 'add-drone', 'edit-drone', 'details', 'maintenance-history'
-  const [selectedDrone, setSelectedDrone] = useState(null);
-  const [confirmingDeleteDrone, setConfirmingDeleteDrone] = useState(null);
-
-  const [drones, setDrones] = useState([
-    {
-      id: 'd1',
-      name: 'AirVibe Falcon 100',
-      model: 'AV-F100',
-      manufacturer: 'AirVibe Tech',
-      uniqueId: 'DRN-AV-001',
-      status: 'Available',
-      lastLocation: 'Hangar 3, Muscat',
-      flightHours: 125.5,
-      payloadCapacity: 2.5,
-      imageUrl: 'https://placehold.co/400x300/4a90e2/ffffff?text=AirVibe+F100',
-      type: 'Drone',
-      maintenanceHistory: [
-        { date: '2025-06-01', description: 'Annual check-up, firmware update.', performedBy: 'Tech Team A', cost: 150 },
-        { date: '2025-03-10', description: 'Propeller replacement after minor incident.', performedBy: 'Tech Team B', cost: 75 },
-      ],
-    },
-    {
-      id: 'd2',
-      name: 'SkyGuard Sentinel',
-      model: 'SG-S200',
-      manufacturer: 'SkyGuard Systems',
-      uniqueId: 'DRN-SG-002',
-      status: 'Deployed',
-      lastLocation: 'Mission Alpha, Site C',
-      flightHours: 89.2,
-      payloadCapacity: 1.8,
-      imageUrl: 'https://placehold.co/400x300/7ed321/ffffff?text=SkyGuard+S200',
-      type: 'Drone',
-      maintenanceHistory: [
-        { date: '2025-07-05', description: 'Pre-deployment system check.', performedBy: 'Pilot John Doe' },
-      ],
-    },
-    {
-      id: 'd3',
-      name: 'AeroScout Pro',
-      model: 'ASP-300',
-      manufacturer: 'AeroDyne Solutions',
-      uniqueId: 'DRN-AD-003',
-      status: 'In Maintenance',
-      lastLocation: 'Workshop Bay 1',
-      flightHours: 210.0,
-      payloadCapacity: 3.0,
-      imageUrl: 'https://placehold.co/400x300/f5a623/ffffff?text=AeroScout+P300',
-      type: 'Drone',
-      maintenanceHistory: [
-        { date: '2025-07-18', description: 'Scheduled 200-hour service and sensor calibration.', performedBy: 'Certified Service' },
-      ],
-    },
-  ]);
-
-  const handleAddDrone = () => setCurrentView('add-drone');
-  const handleViewDroneDetails = (id) => {
-    setSelectedDrone(drones.find(drone => drone.id === id));
-    setCurrentView('details');
-  };
-  const handleEditDrone = () => {
-    setCurrentView('edit-drone');
-  };
-  const handleDeleteDrone = () => {
-    setConfirmingDeleteDrone(selectedDrone.id);
-  };
-  const handleConfirmDeleteDrone = () => {
-    setDrones(drones.filter(drone => drone.id !== confirmingDeleteDrone));
-    setConfirmingDeleteDrone(null);
-    setSelectedDrone(null); // Clear selected drone if it was the one deleted
-    setCurrentView('list');
-  };
-  const handleCancelDeleteDrone = () => {
-    setConfirmingDeleteDrone(null);
-  };
-  const handleViewDroneMaintenanceHistory = () => {
-    setCurrentView('maintenance-history');
-  };
-
-  const handleSaveDrone = (updatedDrone) => {
-    if (currentView === 'add-drone') {
-      setDrones([...drones, updatedDrone]);
-    } else if (currentView === 'edit-drone') {
-      setDrones(drones.map(drone => (drone.id === updatedDrone.id ? updatedDrone : drone)));
-      setSelectedDrone(updatedDrone); // Update selected drone in state
+// Inside the Drones component
+  const handleAddDrone = async () => {
+  if (!newDrone.id || !newDrone.name) {
+    displayMessage("Drone ID and Name are required.", 'error');
+    return;
+  }
+  try {
+    const response = await fetch('http://localhost:5000/api/drones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: newDrone.id, // Ensure ID is sent
+        name: newDrone.name,
+        status: newDrone.status,
+        battery: newDrone.battery,
+        location: newDrone.location,
+        last_flight: newDrone.lastFlight ? new Date(newDrone.lastFlight).toISOString() : null, // Convert to ISO string or null
+        flight_hours: newDrone.flightHours, // Ensure this matches backend field name
+        // Add other fields as per your Drone model in Flask
+      }),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setDrones(prev => [...prev, {
+        ...data,
+        lastFlight: data.last_flight ? new Date(data.last_flight) : null, // Convert back to Date object
+      }]);
+      displayMessage("Drone added successfully!", 'success');
+      setShowAddModal(false);
+      setNewDrone({ id: '', name: '', status: 'Offline', battery: 0, location: '', lastFlight: '', flightHours: 0 });
+    } else {
+      displayMessage(`Failed to add drone: ${data.error || response.statusText}`, 'error');
     }
-    setCurrentView('list');
-  };
-
-  const handleBackToDroneList = () => {
-    setCurrentView('list');
-    setSelectedDrone(null);
-  };
-
-  if (currentView === 'add-drone') {
-    return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" />;
+  } catch (error) {
+    console.error('Error adding drone:', error);
+    displayMessage('Error adding drone: Network issue or server offline.', 'error');
   }
-  if (currentView === 'edit-drone') {
-    return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" initialData={selectedDrone} />;
-  }
-  if (currentView === 'details') {
-    return (
-      <>
-        <AssetDetails
-          asset={selectedDrone}
-          onBack={handleBackToDroneList}
-          onEdit={handleEditDrone}
-          onDelete={handleDeleteDrone}
-          onViewMaintenanceHistory={handleViewDroneMaintenanceHistory}
-          assetTypeIcon={Drone}
-        />
-        {confirmingDeleteDrone && (
-          <ConfirmationModal
-            message={`Are you sure you want to delete drone "${selectedDrone?.name}"? This action cannot be undone.`}
-            onConfirm={handleConfirmDeleteDrone}
-            onCancel={handleCancelDeleteDrone}
-          />
-        )}
-      </>
-    );
-  }
-  if (currentView === 'maintenance-history') {
-    return <MaintenanceHistoryView asset={selectedDrone} onBack={() => setCurrentView('details')} />;
-  }
-
-  return (
-    <AssetList
-      title="Drone Inventory"
-      assets={drones}
-      onAddItem={handleAddDrone}
-      onViewDetails={handleViewDroneDetails}
-      assetTypeIcon={Drone}
-    />
-  );
 };
 
 // --- INLINED GroundStations Component ---
@@ -1526,9 +1423,9 @@ const GroundStations = () => {
       assetTypeIcon={Factory}
     />
   );
-};
+    };
 
-// --- INLINED Equipment Component ---
+  // --- INLINED Equipment Component ---
 const Equipment = () => {
   const [currentView, setCurrentView] = useState('list'); // 'list', 'add-equipment', 'edit-equipment', 'details', 'maintenance-history'
   const [selectedEquipment, setSelectedEquipment] = useState(null);
@@ -3341,178 +3238,69 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
 };
 
 // Maintenance Section Component (from previous response, now integrated)
-function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMessage }) {
-    const [partName, setPartName] = useState('');
-    const [submissionDate, setSubmissionDate] = useState('');
-    const [partStatus, setPartStatus] = useState('');
-    const [deliveryDate, setDeliveryDate] = useState('');
-    const [editingPartId, setEditingPartId] = useState(null); // State to track which part is being edited
+// Inside the MaintenanceSection component
+const [maintenanceParts, setMaintenanceParts] = useState([]); // Initialize as an empty array
+const handleAddOrUpdatePart = async () => {
+    if (!partName || !submissionDate || !partStatus) {
+        displayMessage("Please fill in all required fields (Part Name, Submission Date, Status).", 'error');
+        return;
+    }
 
-    // Function to add or update a maintenance part
-    const handleAddOrUpdatePart = () => {
-        if (!partName || !submissionDate || !partStatus) {
-            displayMessage("Please fill in all required fields (Part Name, Submission Date, Status).", 'error');
-            return;
-        }
+    const partData = {
+        name: partName,
+        submission_date: new Date(submissionDate).toISOString(), // Convert to ISO string
+        status: partStatus,
+        delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null, // Convert or null
+    };
 
+    try {
+        let response;
+        let data;
         if (editingPartId) {
             // Update existing part
-            setMaintenanceParts(maintenanceParts.map(part =>
-                part.id === editingPartId
-                    ? { ...part, name: partName, submissionDate, status: partStatus, deliveryDate: deliveryDate || 'N/A' }
-                    : part
-            ));
-            displayMessage("Maintenance part updated successfully!", 'success');
-            setEditingPartId(null); // Exit editing mode
+            response = await fetch(`http://localhost:5000/api/maintenance_parts/${editingPartId}`, {
+                method: 'PUT', // Use PUT for updates
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(partData),
+            });
+            data = await response.json();
+            if (response.ok) {
+                setMaintenanceParts(prev => prev.map(part =>
+                    part.id === editingPartId
+                        ? { ...part, ...data, submissionDate: data.submission_date ? new Date(data.submission_date) : null, deliveryDate: data.delivery_date ? new Date(data.delivery_date) : null }
+                        : part
+                ));
+                displayMessage("Maintenance part updated successfully!", 'success');
+                setEditingPartId(null); // Exit editing mode
+            } else {
+                displayMessage(`Failed to update part: ${data.error || response.statusText}`, 'error');
+            }
         } else {
             // Add new part
-            const newPart = {
-                id: Date.now(), // Unique ID
-                name: partName,
-                submissionDate,
-                status: partStatus,
-                deliveryDate: deliveryDate || 'N/A',
-            };
-            setMaintenanceParts([...maintenanceParts, newPart]);
-            displayMessage("Maintenance part added successfully!", 'success');
+            response = await fetch('http://localhost:5000/api/maintenance_parts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(partData),
+            });
+            data = await response.json();
+            if (response.ok) {
+                setMaintenanceParts(prev => [...prev, { ...data, submissionDate: data.submission_date ? new Date(data.submission_date) : null, deliveryDate: data.delivery_date ? new Date(data.delivery_date) : null }]);
+                displayMessage("Maintenance part added successfully!", 'success');
+            } else {
+                displayMessage(`Failed to add part: ${data.error || response.statusText}`, 'error');
+            }
         }
         // Clear form fields after add/update
         setPartName('');
         setSubmissionDate('');
         setPartStatus('');
         setDeliveryDate('');
-    };
-
-    // Function to delete a maintenance part
-    const handleDeletePart = (id) => {
-        if (window.confirm("Are you sure you want to delete this maintenance part?")) {
-            setMaintenanceParts(maintenanceParts.filter(part => part.id !== id));
-            displayMessage("Maintenance part deleted.", 'info');
-        }
-    };
-
-    // Function to set up form for editing
-    const handleEditPart = (part) => {
-        setPartName(part.name);
-        setSubmissionDate(part.submissionDate);
-        setPartStatus(part.status);
-        setDeliveryDate(part.deliveryDate === 'N/A' ? '' : part.deliveryDate);
-        setEditingPartId(part.id); // Enter editing mode
-        displayMessage("Edit the details and click 'Update Part'.", 'info');
-    };
-
-    return (
-        <section className="bg-gray-50 rounded-xl p-6 mb-8 shadow-md border border-gray-200">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-700 border-b-2 border-blue-300 pb-3 mb-6">
-                Manage Maintenance
-            </h2>
-
-            {/* Add/Edit Part Form */}
-            <div className="mb-8 p-6 bg-white rounded-lg shadow-inner">
-                <h3 className="text-xl font-semibold text-gray-600 mb-4">
-                    {editingPartId ? 'Edit Part for Maintenance' : 'Add New Part for Maintenance'}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                        type="text"
-                        placeholder="Part Name"
-                        value={partName}
-                        onChange={(e) => setPartName(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="date"
-                        value={submissionDate}
-                        onChange={(e) => setSubmissionDate(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <select
-                        value={partStatus}
-                        onChange={(e) => setPartStatus(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    >
-                        <option value="">Select Status</option>
-                        <option value="Pending">Pending</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Delayed">Delayed</option>
-                    </select>
-                    <input
-                        type="date"
-                        placeholder="Delivery Date (Optional)"
-                        value={deliveryDate}
-                        onChange={(e) => setDeliveryDate(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                    />
-                </div>
-                <button
-                    onClick={handleAddOrUpdatePart}
-                    className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md hover:shadow-lg"
-                >
-                    {editingPartId ? 'Update Part' : 'Add Part for Maintenance'}
-                </button>
-            </div>
-
-            {/* Parts Under Maintenance List */}
-            <div className="p-6 bg-white rounded-lg shadow-inner">
-                <h3 className="text-xl font-semibold text-gray-600 mb-4">Parts Under Maintenance</h3>
-                {maintenanceParts.length === 0 ? (
-                    <p className="text-center text-gray-500 italic p-4 bg-blue-50 rounded-lg">No parts currently under maintenance.</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
-                            <thead className="bg-gray-200">
-                                <tr>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Part Name</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Submission Date</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Status</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Delivery Date</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {maintenanceParts.map((part) => (
-                                    <tr key={part.id} className="hover:bg-gray-50">
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{part.name}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{part.submissionDate}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                                part.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                                                part.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
-                                                part.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                'bg-red-100 text-red-800'
-                                            }`}>
-                                                {part.status}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{part.deliveryDate}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-sm font-medium">
-                                            <button
-                                                onClick={() => handleEditPart(part)}
-                                                className="text-indigo-600 hover:text-indigo-900 mr-3 p-2 rounded-md hover:bg-gray-200 transition duration-200"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeletePart(part.id)}
-                                                className="text-red-600 hover:text-red-900 p-2 rounded-md hover:bg-gray-200 transition duration-200"
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-        </section>
-    );
-}
+        setShowAddModal(false); // Close modal if it's open
+    } catch (error) {
+        console.error('Error processing maintenance part:', error);
+        displayMessage('Error processing maintenance part: Network issue or server offline.', 'error');
+    }
+};
 
 // Incident Section Component (from previous response, now integrated)
 function IncidentSection({ incidents, setIncidents, displayMessage }) {
@@ -3525,11 +3313,75 @@ function IncidentSection({ incidents, setIncidents, displayMessage }) {
     const [editingIncidentId, setEditingIncidentId] = useState(null); // State to track which incident is being edited
 
     // Function to add or update an incident
-    const handleAddOrUpdateIncident = () => {
-        if (!incidentWhen || !incidentPlace || !incidentDrone || !incidentReason || !incidentRegion || !incidentIssue) {
-            displayMessage("Please fill in all required fields for incident.", 'error');
-            return;
-        }
+    // Inside the IncidentSection component
+const handleAddOrUpdateIncident = async () => {
+  if (!incidentWhen || !incidentPlace || !incidentDrone || !incidentReason || !incidentRegion || !incidentIssue) {
+    displayMessage("Please fill in all required fields for incident.", 'error');
+    return;
+  }
+
+  const incidentData = {
+    type: newIncident.type, // Make sure newIncident.type is set by your form
+    message: newIncident.message, // Make sure newIncident.message is set by your form
+    when: new Date(incidentWhen).toISOString(),
+    place: incidentPlace,
+    drone: incidentDrone,
+    reason: incidentReason,
+    region: incidentRegion,
+    issue: incidentIssue,
+  };
+
+  try {
+    let response;
+    let data;
+    if (editingIncidentId) {
+      // Update existing incident
+      response = await fetch(`http://localhost:5000/api/incidents/${editingIncidentId}`, {
+        method: 'PUT', // Use PUT for updates
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(incidentData),
+      });
+      data = await response.json();
+      if (response.ok) {
+        setIncidents(prev => prev.map(inc =>
+          inc.id === editingIncidentId
+            ? { ...inc, ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null } // Update with response data
+            : inc
+        ));
+        displayMessage("Incident updated successfully!", 'success');
+        setEditingIncidentId(null); // Exit editing mode
+      } else {
+        displayMessage(`Failed to update incident: ${data.error || response.statusText}`, 'error');
+      }
+    } else {
+      // Add new incident
+      response = await fetch('http://localhost:5000/api/incidents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...incidentData, resolved: false, timestamp: new Date().toISOString() }), // New incidents are unresolved by default
+      });
+      data = await response.json();
+      if (response.ok) {
+        setIncidents(prev => [...prev, { ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }]);
+        displayMessage("Incident reported successfully!", 'success');
+      } else {
+        displayMessage(`Failed to report incident: ${data.error || response.statusText}`, 'error');
+      }
+    }
+    // Clear form fields after add/update
+    setIncidentWhen('');
+    setIncidentPlace('');
+    setIncidentDrone('');
+    setIncidentReason('');
+    setIncidentRegion('');
+    setIncidentIssue('');
+    setNewIncident({ type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: '' }); // Clear newIncident state too
+    setShowAddModal(false); // Close modal if it's open
+  } catch (error) {
+    console.error('Error processing incident:', error);
+    displayMessage('Error processing incident: Network issue or server offline.', 'error');
+  }
+};
 
         if (editingIncidentId) {
             // Update existing incident
@@ -3643,12 +3495,7 @@ function IncidentSection({ incidents, setIncidents, displayMessage }) {
                         required
                     />
                 </div>
-                <button
-                    onClick={handleAddOrUpdateIncident}
-                    className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md hover:shadow-lg"
-                >
-                    {editingIncidentId ? 'Update Incident' : 'Report Incident'}
-                </button>
+               
             </div>
 
             {/* Recorded Incidents List */}
@@ -3729,57 +3576,171 @@ const App = () => {
   // Initialize Socket.IO connection
   const socket = useRef(null);
 
-  useEffect(() => {
-    // Only connect if authenticated and socket not already connected
-    if (isAuthenticated && !socket.current) {
-      const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
-      const newSocket = io(FLASK_BACKEND_WS_URL);
-      socket.current = newSocket; // Assign to ref
+    // Inside the useEffect for Socket.IO connection
+useEffect(() => {
+    // ... (existing code for isAuthenticated and socket.current check)
 
-      newSocket.on('connect', () => {
+    const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // Ensure this is correct
+    const newSocket = io(FLASK_BACKEND_WS_URL);
+    socket.current = newSocket; // Assign to ref
+
+    newSocket.on('connect', () => {
         console.log('Connected to Flask Socket.IO backend!');
         displayMessage('Connected to real-time backend!', 'success');
         newSocket.emit('register_as_frontend'); // Register this client as a frontend
-      });
+    });
 
-      newSocket.on('disconnect', () => {
+    newSocket.on('disconnect', () => {
         console.log('Disconnected from Flask Socket.IO backend.');
         displayMessage('Disconnected from real-time backend.', 'error');
-      });
+    });
 
-      newSocket.on('drone_telemetry_update', (data) => { // Changed from 'telemetry_data' to 'drone_telemetry_update' to match backend
+    // --- IMPORTANT: Ensure these event names match your Flask backend! ---
+    // Update for drone telemetry
+    newSocket.on('drone_telemetry_update', (data) => {
+        // console.log('Received telemetry update:', data); // Uncomment for debugging
         setLiveTelemetry(prev => ({
-          ...prev,
-          [data.drone_id]: data.telemetry
+            ...prev,
+            [data.drone_id]: data.telemetry
         }));
-      });
+    });
 
-      newSocket.on('new_notification', (data) => { // Changed from 'notification' to 'new_notification' to match backend
-        console.log('New notification:', data);
+    // Update for new notifications
+    newSocket.on('new_notification', (data) => {
+        console.log('New notification received:', data);
         const newNotification = {
-          id: Date.now(), // Unique ID for the notification
-          message: data.message,
-          type: data.type || 'info', // 'info', 'alert', 'success'
-          read: false,
-          timestamp: new Date().toISOString(),
+            id: data.id, // Use ID from backend if provided, otherwise generate
+            message: data.message,
+            type: data.type || 'info', // 'info', 'alert', 'success'
+            read: data.read || false, // Default to unread
+            timestamp: new Date(data.timestamp), // Parse timestamp to Date object
         };
-        setNotifications(prev => [newNotification, ...prev]);
-        displayMessage(data.message, newNotification.type);
-      });
+        setNotifications(prev => [newNotification, ...prev]); // Add new notification to the top
+        displayMessage(data.message, newNotification.type); // Show toast
+    });
 
-      newSocket.on('command_status_report', (data) => { // Changed from 'drone_command_response' to 'command_status_report' to match backend
-        displayMessage(`Command for ${data.drone_id}: ${data.status} - ${data.message}`, data.status === 'success' ? 'success' : 'error');
-      });
-    }
+    // Listener for when a notification is updated (e.g., marked as read)
+    newSocket.on('notification_updated', (updatedNotification) => {
+        setNotifications(prev => prev.map(n =>
+            n.id === updatedNotification.id ? { ...n, ...updatedNotification, timestamp: new Date(updatedNotification.timestamp) } : n
+        ));
+    });
 
-    // Clean up on unmount or when isAuthenticated changes
+    // Listener for when a notification is deleted
+    newSocket.on('notification_deleted', (deletedNotificationId) => {
+        setNotifications(prev => prev.filter(n => n.id !== deletedNotificationId));
+    });
+
+    // Listener for new media available (if your gateway sends this)
+    newSocket.on('new_media_available', (mediaData) => {
+        console.log('New media available:', mediaData);
+        setMediaItems(prev => [
+            { ...mediaData, date: new Date(mediaData.date) }, // Ensure Date object
+            ...prev
+        ]);
+        displayMessage(`New media captured by ${mediaData.droneId}: ${mediaData.title}`, 'info');
+    });
+
+    // ... (rest of the useEffect cleanup function)
     return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-        socket.current = null;
-      }
+        if (socket.current) {
+            socket.current.disconnect();
+            socket.current = null;
+        }
     };
-  }, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
+}, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
+
+// Inside the App component, after the Socket.IO useEffect
+// Initial Data Fetching from Flask REST APIs
+useEffect(() => {
+    const fetchAllInitialData = async () => {
+        if (!isAuthenticated) return; // Only fetch if authenticated
+
+        try {
+            const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // Ensure this is correct
+
+            const endpoints = {
+                drones: `${FLASK_BACKEND_REST_URL}/api/drones`,
+                missions: `${FLASK_BACKEND_REST_URL}/api/missions`,
+                media: `${FLASK_BACKEND_REST_URL}/api/media`,
+                maintenanceParts: `${FLASK_BACKEND_REST_URL}/api/maintenance_parts`,
+                incidents: `${FLASK_BACKEND_REST_URL}/api/incidents`,
+                notifications: `${FLASK_BACKEND_REST_URL}/api/notifications`, // Fetch initial notifications via REST too
+            };
+
+            const fetchPromises = Object.entries(endpoints).map(async ([key, url]) => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} from ${url}`);
+                    }
+                    const data = await response.json();
+                    return { key, data };
+                } catch (error) {
+                    console.error(`Error fetching ${key} from ${url}:`, error);
+                    displayMessage(`Failed to load ${key}.`, 'error');
+                    return { key, data: [] }; // Return empty array on error to prevent breaking
+                }
+            });
+
+            const results = await Promise.all(fetchPromises);
+
+            results.forEach(({ key, data }) => {
+                switch (key) {
+                    case 'drones':
+                        setDrones(data.map(d => ({
+                            ...d,
+                            lastFlight: d.last_flight ? new Date(d.last_flight) : null,
+                            // Add other date parsing if necessary for other drone fields
+                        })));
+                        break;
+                    case 'missions':
+                        setMissions(data.map(m => ({
+                            ...m,
+                            startTime: m.start_time ? new Date(m.start_time) : null, // Assuming backend sends start_time
+                            endTime: m.end_time ? new Date(m.end_time) : null,       // Assuming backend sends end_time
+                            // Parse other dates if they exist in mission data
+                        })));
+                        break;
+                    case 'media':
+                        setMediaItems(data.map(m => ({
+                            ...m,
+                            date: m.date ? new Date(m.date) : null, // Assuming backend sends 'date' for media
+                            // Parse other dates if they exist in media data
+                        })));
+                        break;
+                    case 'maintenanceParts':
+                        setMaintenanceParts(data.map(p => ({
+                            ...p,
+                            lastMaintenance: p.last_maintenance ? new Date(p.last_maintenance) : null, // Assuming backend sends last_maintenance
+                            nextMaintenance: p.next_maintenance ? new Date(p.next_maintenance) : null, // Assuming backend sends next_maintenance
+                        })));
+                        break;
+                    case 'incidents':
+                        setIncidents(data.map(i => ({
+                            ...i,
+                            timestamp: i.timestamp ? new Date(i.timestamp) : null, // Assuming backend sends timestamp
+                        })));
+                        break;
+                    case 'notifications':
+                        setNotifications(data.map(n => ({
+                            ...n,
+                            timestamp: n.timestamp ? new Date(n.timestamp) : null, // Assuming backend sends timestamp
+                        })));
+                        break;
+                    default:
+                        break;
+                }
+            });
+
+        } catch (error) {
+            console.error('Error fetching all initial data:', error);
+            displayMessage('Failed to load some application data.', 'error');
+        }
+    };
+
+    fetchAllInitialData();
+}, [isAuthenticated, displayMessage]); // Re-fetch when authentication status changes 
 
   // Function to send drone commands via REST API (as backend expects REST for commands)
   const sendDroneCommand = async (droneId, command, params = {}) => {
@@ -3814,15 +3775,43 @@ const App = () => {
   };
 
   // Placeholder data for other components (now part of App state)
-  const [mediaItems, setMediaItems] = useState([
-    { id: 'v1', type: 'video', src: 'https://www.w3schools.com/html/mov_bbb.mp4', thumb: 'https://placehold.co/150x100/3498db/ffffff?text=Video1', title: 'Mission Alpha Flight', description: 'Flight over North Campus.', date: '2025-07-15' },
-    { id: 'i1', type: 'image', src: 'https://placehold.co/600x400/2ecc71/ffffff?text=Inspection+1', thumb: 'https://placehold.co/150x100/2ecc71/ffffff?text=Image1', title: 'Bridge Inspection Photo', description: 'Close-up of pillar structure.', date: '2025-07-16' },
-  ]);
-
-  const [incidents, setIncidents] = useState([
-    { id: 'i-001', type: 'alert', message: 'Unauthorized drone detected in restricted airspace.', timestamp: '2025-07-21T10:00:00Z', resolved: false },
-    { id: 'i-002', type: 'warning', message: 'Drone Battery Level Critical (DRN-005).', timestamp: '2025-07-20T14:30:00Z', resolved: true },
-  ]);
+  const [mediaItems, setMediaItems] = useState([]); // Initialize as an empty array
+    // Inside the Media component (handleUploadMedia function)
+const handleUploadMedia = async (newMediaData) => {
+    try {
+        const response = await fetch('http://localhost:5000/api/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: newMediaData.title,
+                type: newMediaData.type,
+                url: newMediaData.url,
+                thumbnail: newMediaData.thumbnail,
+                drone_id: newMediaData.droneId, // Ensure this matches backend field name
+                mission_id: newMediaData.missionId, // Ensure this matches backend field name
+                timestamp: new Date().toISOString(), // Use current timestamp for upload
+                gps: newMediaData.gps,
+                tags: newMediaData.tags,
+                description: newMediaData.description,
+            }),
+        });
+        const data = await response.json();
+        if (response.ok) {
+            setMediaItems(prevItems => [...prevItems, {
+                ...data,
+                date: data.timestamp ? new Date(data.timestamp) : null, // Use timestamp from backend for 'date'
+            }]);
+            displayMessage("Media uploaded successfully!", 'success');
+            setCurrentView('list'); // Go back to list view
+        } else {
+            displayMessage(`Failed to upload media: ${data.error || response.statusText}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error uploading media:', error);
+        displayMessage('Error uploading media: Network issue or server offline.', 'error');
+    }
+};  
+  const [incidents, setIncidents] = useState([]); // Initialize as an empty array
 
   const [maintenanceParts, setMaintenanceParts] = useState([
     { id: 'p1', name: 'Propeller Set A', status: 'Available', lastMaintenance: '2025-06-01', nextMaintenance: '2025-08-01' },
@@ -3884,7 +3873,7 @@ const App = () => {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* The Router now wraps the entire application */}
-      <Router>
+      
         {isAuthenticated ? (
           <div className="flex">
             <Sidebar onLogout={handleLogout} />
@@ -3956,11 +3945,12 @@ const App = () => {
           // If not authenticated, render the AuthPage
           <AuthPage onLoginSuccess={handleLoginSuccess} />
         )}
-      </Router>
+      
     </div>
   );
 };
 
 export default App;
+
 
 
