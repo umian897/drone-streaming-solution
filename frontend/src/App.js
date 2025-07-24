@@ -1,20 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'; // This should be your ONLY React import line
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'; // REMOVE BrowserRouter and as Router
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BellIcon, // Ensure BellIcon is imported if not already
   LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
   Book, FileText, CheckSquare, Tag, Settings, AlertCircle, Wrench, Bell, UserCircle,
-  LogOut, ChevronDown, ChevronUp, PlusCircle, MoreVertical, Trash2, MapPin, Activity, Clock, Image,
-  Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, Calendar, Users, Map, ListChecks, File, PlayCircle,
-  Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Search, Play, Pause, FastForward, Rewind, Volume2,
-  List, Check, Square, MinusCircle, Folder, Image as ImageIcon,
-  Mail,
-  Key
+  LogOut, ChevronDown, ChevronUp, PlusCircle, MoreVertical, Trash2, MapPin, Activity, Clock, Image as ImageIcon,
+  Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, ListChecks, Search,
+  Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Mail, Key, Check, Calendar,
+  List, Folder, 
+ 
+  Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square
 } from 'lucide-react';
-// ... rest of your code
-// Import the authentication page component. Path is correct.
+import { io } from 'socket.io-client';
+
+// Firebase Imports (for authentication, not Firestore in this SQL version)
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+
+// Import the authentication page component.
 import AuthPage from './pages/auth/AuthPage';
-import { io } from 'socket.io-client'; 
+
+// --- Global Firebase Config & App ID (Provided by Canvas Environment, or default for local dev) ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// Initialize Firebase App
+// Check if firebaseConfig is not empty before initializing
+const firebaseApp = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+const auth = firebaseApp ? getAuth(firebaseApp) : null;
+
+
 // --- INLINED Sidebar Component ---
 const Sidebar = ({ onLogout }) => {
   const location = useLocation();
@@ -28,38 +43,47 @@ const Sidebar = ({ onLogout }) => {
   const isDropdownActive = (paths) => paths.some(path => location.pathname.startsWith(path));
 
   return (
-    <div className="w-64 bg-gray-800 text-white flex flex-col min-h-screen shadow-lg">
-      <div className="p-4 border-b border-gray-700 flex items-center">
-        <UserCircle className="w-10 h-10 text-blue-300 mr-3" />
-        <span className="text-lg font-semibold">m osman</span>
+    <div className="w-64 bg-gray-800 text-white flex flex-col h-screen shadow-lg">
+      <div className="p-6 flex items-center justify-center border-b border-gray-700">
+        <img src="https://placehold.co/40x40/ffffff/000000?text=AV" alt="AirVibe Logo" className="h-10 w-10 mr-3 rounded-full" />
+        <span className="text-2xl font-bold text-blue-400">AirVibe</span>
       </div>
 
-      <div className="p-4 border-b border-gray-700">
-        <button className="w-full flex items-center justify-center py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md text-white font-medium transition duration-150 transform hover:scale-105 shadow-md">
-          <PlusCircle className="w-5 h-5 mr-2" /> Create mission
-        </button>
-      </div>
-
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
         <Link to="/" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
           <LayoutDashboard className="w-5 h-5 mr-3" />
           Dashboard
         </Link>
 
-        <Link to="/live-operations" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/live-operations') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
-          <Video className="w-5 h-5 mr-3" />
-          Live Operations
-        </Link>
+        {/* Operations Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => toggleDropdown('operations')}
+            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/live-operations', '/missions']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+          >
+            <span className="flex items-center">
+              <Video className="w-5 h-5 mr-3" />
+              Operations
+            </span>
+            {openDropdown === 'operations' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+          {openDropdown === 'operations' && (
+            <div className="pl-6 pt-2 space-y-1">
+              <Link to="/live-operations" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/live-operations') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <VideoIcon className="w-4 h-4 mr-3" /> Live Operations
+              </Link>
+              <Link to="/missions" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/missions') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <Rocket className="w-4 h-4 mr-3" /> Missions
+              </Link>
+            </div>
+          )}
+        </div>
 
-        <Link to="/missions" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/missions') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
-          <Rocket className="w-5 h-5 mr-3" />
-          Missions
-        </Link>
-
-        <div>
+        {/* Assets Dropdown */}
+        <div className="relative">
           <button
             onClick={() => toggleDropdown('assets')}
-            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets']) || openDropdown === 'assets' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets/drones', '/assets/ground-stations', '/assets/equipment', '/assets/batteries']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
           >
             <span className="flex items-center">
               <Package className="w-5 h-5 mr-3" />
@@ -68,27 +92,28 @@ const Sidebar = ({ onLogout }) => {
             {openDropdown === 'assets' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {openDropdown === 'assets' && (
-            <div className="pl-8 py-1 space-y-1">
-              <Link to="/assets/drones" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/assets/drones') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <Drone className="w-4 h-4 mr-2" /> Drones
+            <div className="pl-6 pt-2 space-y-1">
+              <Link to="/assets/drones" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/drones') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <Drone className="w-4 h-4 mr-3" /> Drones
               </Link>
-              <Link to="/assets/ground-stations" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/assets/ground-stations') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <HardDrive className="w-4 h-4 mr-2" /> Ground stations
+              <Link to="/assets/ground-stations" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/ground-stations') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <Factory className="w-4 h-4 mr-3" /> Ground Stations
               </Link>
-              <Link to="/assets/equipment" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/assets/equipment') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <Wrench className="w-4 h-4 mr-2" /> Equipment
+              <Link to="/assets/equipment" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/equipment') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <HardDrive className="w-4 h-4 mr-3" /> Equipment
               </Link>
-              <Link to="/assets/batteries" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/assets/batteries') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <BatteryCharging className="w-4 h-4 mr-2" /> Batteries
+              <Link to="/assets/batteries" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/batteries') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <BatteryMedium className="w-4 h-4 mr-3" /> Batteries
               </Link>
             </div>
           )}
         </div>
 
-        <div>
+        {/* Library Dropdown */}
+        <div className="relative">
           <button
             onClick={() => toggleDropdown('library')}
-            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/library']) || openDropdown === 'library' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/library/media', '/library/files', '/library/checklists', '/library/tags']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
           >
             <span className="flex items-center">
               <Book className="w-5 h-5 mr-3" />
@@ -97,27 +122,28 @@ const Sidebar = ({ onLogout }) => {
             {openDropdown === 'library' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {openDropdown === 'library' && (
-            <div className="pl-8 py-1 space-y-1">
-              <Link to="/library/media" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/library/media') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <Video className="w-4 h-4 mr-2" /> Media
+            <div className="pl-6 pt-2 space-y-1">
+              <Link to="/library/media" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/media') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <ImageIcon className="w-4 h-4 mr-3" /> Media
               </Link>
-              <Link to="/library/files" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/library/files') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <FileText className="w-4 h-4 mr-2" /> Files
+              <Link to="/library/files" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/files') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <FileText className="w-4 h-4 mr-3" /> Files
               </Link>
-              <Link to="/library/checklists" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/library/checklists') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <CheckSquare className="w-4 h-4 mr-2" /> Checklists
+              <Link to="/library/checklists" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/checklists') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <CheckSquare className="w-4 h-4 mr-3" /> Checklists
               </Link>
-              <Link to="/library/tags" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/library/tags') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <Tag className="w-4 h-4 mr-2" /> Tags
+              <Link to="/library/tags" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/tags') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <Tag className="w-4 h-4 mr-3" /> Tags
               </Link>
             </div>
           )}
         </div>
 
-        <div>
+        {/* Manage Dropdown */}
+        <div className="relative">
           <button
             onClick={() => toggleDropdown('manage')}
-            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/manage']) || openDropdown === 'manage' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+            className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/manage/profile-settings', '/manage/incidents', '/manage/maintenance']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
           >
             <span className="flex items-center">
               <Settings className="w-5 h-5 mr-3" />
@@ -126,183 +152,138 @@ const Sidebar = ({ onLogout }) => {
             {openDropdown === 'manage' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {openDropdown === 'manage' && (
-            <div className="pl-8 py-1 space-y-1">
-              <Link to="/manage/incidents" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/manage/incidents') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <AlertCircle className="w-4 h-4 mr-2" /> Incidents
+            <div className="pl-6 pt-2 space-y-1">
+              <Link to="/manage/profile-settings" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/profile-settings') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <UserCircle className="w-4 h-4 mr-3" /> Profile Settings
               </Link>
-              <Link to="/manage/maintenance" className={`flex items-center p-2 rounded-md text-sm transition duration-150 ${isActive('/manage/maintenance') ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}>
-                <Wrench className="w-4 h-4 mr-2" /> Maintenance
+              <Link to="/manage/incidents" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/incidents') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <AlertCircle className="w-4 h-4 mr-3" /> Incidents
+              </Link>
+              <Link to="/manage/maintenance" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/maintenance') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                <Wrench className="w-4 h-4 mr-3" /> Maintenance
               </Link>
             </div>
           )}
         </div>
 
-        <Link to="/manage/profile-settings" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/profile-settings') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
-          <UserCircle className="w-5 h-5 mr-3" />
-          Account
-        </Link>
-
-        <Link to="/manage/notification-preferences" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/notification-preferences') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
+        <Link to="/notifications" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/notifications') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
           <Bell className="w-5 h-5 mr-3" />
           Notifications
         </Link>
-
       </nav>
 
-     
-
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-4 border-t border-gray-700 mt-auto">
         <button
           onClick={onLogout}
-          className="w-full flex items-center justify-center py-2 px-4 bg-red-600 hover:bg-red-700 rounded-md text-white font-medium transition duration-150 transform hover:scale-105 shadow-md"
+          className="flex items-center w-full p-3 rounded-md text-sm font-medium text-red-300 hover:bg-red-700 hover:text-white transition duration-150"
         >
-          <LogOut className="w-5 h-5 mr-2" /> Logout
+          <LogOut className="w-5 h-5 mr-3" />
+          Logout
         </button>
       </div>
     </div>
   );
 };
 
-// --- INLINED CardWidget Component ---
-const CardWidget = ({ title, children, onDelete, onMoreOptions ,  }) => {
-  return (
-    <div className="bg-white rounded-xl shadow-md p-6 flex flex-col h-full">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        <div className="flex space-x-2">
-          {onMoreOptions && (
-            <button className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors">
-              <MoreVertical className="w-5 h-5" />
-            </button>
-          )}
-          {onDelete && (
-            <button onClick={onDelete} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 transition-colors">
-              <Trash2 className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="flex-1">
-        {children}
-      </div>
-    </div>
-  );
-};
-
 // --- INLINED Dashboard Component ---
-const Dashboard = () => {
-  const naviagte = useNavigate()
-  const recentMedia = [
-    { id: 1, type: 'video', thumbnail: 'https://placehold.co/100x60/a78bfa/ffffff?text=Video1', title: 'Mission Alpha Capture' },
-    { id: 2, type: 'image', thumbnail: 'https://placehold.co/100x60/818cf8/ffffff?text=Image1', title: 'Inspection Photo 1' },
-    { id: 3, type: 'video', thumbnail: 'https://placehold.co/100x60/6366f1/ffffff?text=Video2', title: 'Evening Flight' },
-  ];
+const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }) => { // Accept data as props
+  const navigate = useNavigate(); // Moved inside component
 
-  const incidents = [
-    { id: 1, type: 'warning', description: 'Drone Battery Low', time: '10:30 AM' },
-    { id: 2, type: 'alert', description: 'Unexpected Wind Gust', time: '09:15 AM' },
-  ];
+  // Calculate counts from props
+  const totalDrones = drones.length;
+  const activeMissions = missions.filter(m => m.status === 'Active').length;
+  const pendingMaintenance = maintenanceParts.filter(p => p.status !== 'Available').length;
+  const recentIncidents = incidents.filter(i => !i.resolved).length;
+  const mediaToday = mediaItems.filter(m => {
+    const today = new Date();
+    return m.date && m.date.getDate() === today.getDate() &&
+           m.date.getMonth() === today.getMonth() &&
+           m.date.getFullYear() === today.getFullYear();
+  }).length;
 
-  const handleCardDelete = (cardName) => {
-    // In a real app, this would trigger a modal or a more robust delete process
-    console.log(`Delete icon clicked for ${cardName} card.`);
-  };
+  // Placeholder for actual flight hours calculation
+  const totalFlightHours = drones.reduce((sum, drone) => sum + (drone.flightHours || 0), 0).toFixed(1);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <CardWidget title="User Profile" onDelete={() => handleCardDelete('User Profile')}>
-        <div 
-        
-     
-        className="flex flex-col items-center justify-center h-full text-center">
-          <UserCircle className="w-20 h-20 text-gray-400 mb-4" />
-          <h4 className="text-xl font-bold text-gray-800">m osman</h4>
-          <div className="mt-4 text-gray-600 text-sm space-y-2">
-            <p className="flex items-center"><Activity className="w-4 h-4 mr-2 text-blue-500" /> Total flight time: -</p>
-            <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Average flight time: -</p>
-            <p className="flex items-center"><Rocket className="w-4 h-4 mr-2 text-purple-500" /> Number of flights: -</p>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Card 1: Total Drones */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <Drone className="w-12 h-12 text-blue-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Total Drones</p>
+            <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
           </div>
-          <button 
-             onClick={()=>{
-          naviagte("/manage/profile-settings")
-        }}
-          className="mt-6 text-blue-600 hover:text-blue-700 font-medium text-sm">Open profile</button>
         </div>
-      </CardWidget>
 
-      <CardWidget title="Live Airspace" onDelete={() => handleCardDelete('Live Airspace')}>
-        <div className="flex flex-col items-center justify-center h-full bg-gray-200 rounded-lg">
-          <MapPin className="w-16 h-16 text-gray-500 mb-4" />
-          <p className="text-gray-600">Live drone tracking map will appear here.</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
+        {/* Card 2: Active Missions */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <Rocket className="w-12 h-12 text-green-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Active Missions</p>
+            <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
+          </div>
         </div>
-      </CardWidget>
 
-      <CardWidget title="Incidents" onDelete={() => handleCardDelete('Incidents')}>
-        <ul className="space-y-3">
-          {incidents.length > 0 ? (
-            incidents.map(incident => (
-              <li key={incident.id} className="flex items-center p-2 bg-red-50 rounded-md text-sm text-red-800">
-                <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold">{incident.description}</p>
-                  <p className="text-xs text-red-600">{incident.time}</p>
-                </div>
-              </li>
-            ))
-          ) : (
-            <p className="text-gray-500">No recent incidents.</p>
-          )}
-        </ul>
-        <button 
-        
-        onClick={()=>{naviagte("/manage/incidents")}}
-
-        className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
-      </CardWidget>
-
-      <CardWidget title="Recent media" onDelete={() => handleCardDelete('Recent Media')}>
-        <div className="grid grid-cols-2 gap-4"
-        
-        >
-          {recentMedia.length > 0 ? (
-            recentMedia.map(media => (
-              <div key={media.id} className="relative group rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200">
-                <img src={media.thumbnail} alt={media.title} className="w-full h-24 object-cover" />
-                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                  <Image className="w-8 h-8 text-white" />
-                </div>
-                <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 to-transparent text-white text-xs p-2 truncate">{media.title}</p>
-              </div>
-            ))
-          ) : (
-            <p className="text-gray-500">No recent media.</p>
-          )}
+        {/* Card 3: Pending Maintenance */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <Wrench className="w-12 h-12 text-yellow-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Pending Maintenance</p>
+            <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
+          </div>
         </div>
-        <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View all</button>
-      </CardWidget>
 
-      <CardWidget title="Maintenance" onDelete={() => handleCardDelete('Maintenance')}>
-        <div className="flex flex-col items-center justify-center h-full text-center">
-          <Wrench className="w-16 h-16 text-gray-400 mb-4" />
-          <p className="text-gray-600">Upcoming maintenance schedules and logs will be displayed here.</p>
-          <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm"
-        onClick={()=>{naviagte("/manage/maintenance")}}
-          
-          >View all</button>
+        {/* Card 4: Recent Incidents */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Recent Incidents</p>
+            <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
+          </div>
         </div>
-    
-      </CardWidget>
+
+        {/* Card 5: Media Captured */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <ImageIcon className="w-12 h-12 text-purple-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Media Captured (Today)</p>
+            <p className="text-3xl font-bold text-gray-900">{mediaToday}</p>
+          </div>
+        </div>
+
+        {/* Card 6: Total Flight Hours */}
+        <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+          <Clock className="w-12 h-12 text-indigo-500" />
+          <div>
+            <p className="text-gray-500 text-sm">Total Flight Hours</p>
+            <p className="text-3xl font-bold text-gray-900">{totalFlightHours}h</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Placeholder for Charts/Graphs */}
+      <div className="mt-8 bg-white rounded-xl shadow-md p-6">
+        <h3 className="text-xl font-semibold text-gray-800 mb-4">Flight Activity Chart (Placeholder)</h3>
+        <div className="h-64 bg-gray-100 rounded-md flex items-center justify-center text-gray-400">
+          Graph will be displayed here
+        </div>
+      </div>
     </div>
   );
 };
-
 
 // --- INLINED LiveOperations Component ---
-const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displayMessage }) => { // Receive new props
-  const [selectedDrone, setSelectedDrone] = useState('DRN-SIM-001'); // Default to simulated drone ID
+const LiveOperations = ({ drones, liveTelemetry, sendDroneCommand, displayMessage }) => {
+  const [selectedDrone, setSelectedDrone] = useState(drones.length > 0 ? drones[0].id : ''); // Default to first drone ID if available
 
-  // Use the live telemetry received from props
+  useEffect(() => {
+    if (drones.length > 0 && !selectedDrone) {
+      setSelectedDrone(drones[0].id); // Set default if drones load after component
+    }
+  }, [drones, selectedDrone]);
+
   const currentTelemetry = liveTelemetry[selectedDrone] || {
     altitude: 0,
     speed: 0,
@@ -311,57 +292,50 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
     flight_mode: 'N/A',
     latitude: 0,
     longitude: 0,
-    heading: 'N/A' // This is not coming from backend telemetry yet, keep as placeholder
+    heading: 'N/A'
   };
-
-  // const drones = [
-  //   { id: 'DRN-SIM-001', name: 'Simulated Drone 1', videoUrl: 'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed' },
-  //   { id: 'drone2', name: 'Drone Beta', videoUrl: 'https://placehold.co/600x400/2ecc71/ffffff?text=Drone+Beta+Feed' },
-  //   { id: 'drone3', name: 'Drone Gamma', videoUrl: 'https://placehold.co/600x400/e74c3c/ffffff?text=Drone+Gamma+Feed' },
-  // ];
 
   const currentDrone = drones.find(d => d.id === selectedDrone);
 
   const handleTakePhoto = () => {
-    if (sendDroneCommand) {
+    if (sendDroneCommand && selectedDrone) {
       sendDroneCommand(selectedDrone, 'take_photo');
     } else {
-      displayMessage("Backend connection not ready to send commands.", 'error');
+      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
     }
   };
 
   const handleRecordVideo = () => {
-    if (sendDroneCommand) {
+    if (sendDroneCommand && selectedDrone) {
       sendDroneCommand(selectedDrone, 'record_video_start');
     } else {
-      displayMessage("Backend connection not ready to send commands.", 'error');
+      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
     }
   };
 
   const handleStopRecordVideo = () => {
-    if (sendDroneCommand) {
+    if (sendDroneCommand && selectedDrone) {
       sendDroneCommand(selectedDrone, 'record_video_stop');
     } else {
-      displayMessage("Backend connection not ready to send commands.", 'error');
+      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
     }
   };
 
   const handleTakeoff = () => {
-    if (sendDroneCommand) {
-      sendDroneCommand(selectedDrone, 'takeoff', { altitude: 10 }); // Example: Takeoff to 10m
+    if (sendDroneCommand && selectedDrone) {
+      sendDroneCommand(selectedDrone, 'takeoff', { altitude: 10 });
     } else {
-      displayMessage("Backend connection not ready to send commands.", 'error');
+      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
     }
   };
 
   const handleLand = () => {
-    if (sendDroneCommand) {
+    if (sendDroneCommand && selectedDrone) {
       sendDroneCommand(selectedDrone, 'land');
     } else {
-      displayMessage("Backend connection not ready to send commands.", 'error');
+      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
     }
   };
-
 
   return (
     <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
@@ -378,7 +352,7 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
             className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
           >
             {drones.map(drone => (
-              <option key={drone.id} value={drone.id}>{drone.name}</option>
+              <option key={drone.id} value={drone.id}>{drone.name} ({drone.id})</option>
             ))}
           </select>
         </div>
@@ -406,7 +380,7 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
         {/* Main Video Feed */}
         <div className="lg:col-span-2 bg-gray-900 rounded-xl shadow-md overflow-hidden relative">
           {currentDrone ? (
-            <img src={currentDrone.videoUrl} alt={`${currentDrone.name} Live Feed`} className="w-full h-full object-cover" />
+            <img src={'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed'} alt={`${currentDrone.name} Live Feed`} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 text-xl">
               No drone selected or feed unavailable.
@@ -454,7 +428,7 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {drones.filter(d => d.id !== selectedDrone).map(drone => (
             <div key={drone.id} className="bg-gray-800 rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setSelectedDrone(drone.id)}>
-              <img src={drone.videoUrl} alt={`${drone.name} Feed`} className="w-full h-32 object-cover" />
+              <img src={'https://placehold.co/600x400/2ecc71/ffffff?text=Other+Drone+Feed'} alt={`${drone.name} Feed`} className="w-full h-32 object-cover" />
               <div className="p-2 text-white text-sm font-medium">{drone.name}</div>
             </div>
           ))}
@@ -465,421 +439,165 @@ const LiveOperations = ({ onCaptureMedia, liveTelemetry, sendDroneCommand, displ
 };
 
 // --- INLINED Missions Component ---
-const Missions = () => {
-  const [currentView, setCurrentView] = useState('list'); // 'list', 'create-pilot', 'create-ground', 'details'
-  const [selectedMission, setSelectedMission] = useState(null); // For viewing details
+const Missions = ({ missions, setMissions, displayMessage }) => {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMission, setNewMission] = useState({
+    id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '',
+    progress: 0, details: '', waypoints: 0, area: '', payload: ''
+  });
 
-  // Simulated mission data
-  const [missions, setMissions] = useState([]); // Initialize as an empty array
-  const Missions = ({ missions, setMissions, displayMessage }) => {
-    // Inside the Missions component
-const handleAddMission = async () => {
-  if (!newMission.name || !newMission.drone || !newMission.startTime || !newMission.endTime) {
-    displayMessage("Please fill all required mission fields.", 'error');
-    return;
-  }
-  try {
-    const response = await fetch('http://localhost:5000/api/missions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newMission.name,
-        status: newMission.status,
-        drone_id: newMission.drone, // Ensure this matches backend field name
-        start_time: new Date(newMission.startTime).toISOString(), // Convert to ISO string
-        end_time: new Date(newMission.endTime).toISOString(),     // Convert to ISO string
-        progress: newMission.progress,
-        details: newMission.details,
-        waypoints: newMission.waypoints,
-        area: newMission.area,
-        payload: newMission.payload,
-        // Add other fields as per your Mission model in Flask
-      }),
-    });
-    const data = await response.json();
-    if (response.ok) {
-      setMissions(prev => [...prev, {
-        ...data,
-        startTime: data.start_time ? new Date(data.start_time) : null, // Convert back to Date object
-        endTime: data.end_time ? new Date(data.end_time) : null,     // Convert back to Date object
-      }]);
-      displayMessage("Mission added successfully!", 'success');
-      setShowAddModal(false);
-      setNewMission({ id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '', progress: 0, details: '', waypoints: 0, area: '', payload: '' });
-    } else {
-      displayMessage(`Failed to add mission: ${data.error || response.statusText}`, 'error');
+  const handleAddMission = async () => {
+    if (!newMission.name || !newMission.drone || !newMission.startTime || !newMission.endTime) {
+      displayMessage("Please fill all required mission fields.", 'error');
+      return;
     }
-  } catch (error) {
-    console.error('Error adding mission:', error);
-    displayMessage('Error adding mission: Network issue or server offline.', 'error');
-  }
-};
-  const handleCreateMission = (type) => {
-    setCurrentView(`create-${type}`);
-  };
-
-  const handleViewDetails = (missionId) => {
-    const mission = missions.find(m => m.id === missionId);
-    setSelectedMission(mission);
-    setCurrentView('details');
-  };
-
-  const handleBackToList = () => {
-    setCurrentView('list');
-    setSelectedMission(null);
-  };
-
-  const handleSaveNewMission = (newMissionData) => {
-    const newId = `m${missions.length + 1}`;
-    setMissions([...missions, { id: newId, ...newMissionData, status: 'Planned', progress: 0, media: [], incidents: [] }]);
-    setCurrentView('list');
-  };
-
-  // Sub-component for Create Pilot Mission Form
-  const CreatePilotMissionForm = () => {
-    const [name, setName] = useState('');
-    const [objectives, setObjectives] = useState('');
-    const [assignedDrone, setAssignedDrone] = useState('');
-    const [assignedOperator, setAssignedOperator] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      handleSaveNewMission({
-        name,
-        objectives,
-        type: 'Pilot',
-        drone: assignedDrone,
-        operator: assignedOperator,
-        startDate,
-        endDate,
+    try {
+      const response = await fetch('http://localhost:5000/api/missions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newMission,
+          startTime: new Date(newMission.startTime).toISOString(), // Convert to ISO string
+          endTime: new Date(newMission.endTime).toISOString(),     // Convert to ISO string
+        }),
       });
-    };
-
-    return (
-      <div className="p-6 bg-white rounded-xl shadow-md">
-        <h3 className="text-2xl font-bold text-gray-800 mb-4">Create Pilot Mission</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Mission Name</label>
-            <input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
-          </div>
-          <div>
-            <label htmlFor="objectives" className="block text-sm font-medium text-gray-700">Objectives</label>
-            <textarea id="objectives" value={objectives} onChange={(e) => setObjectives(e.target.value)} rows="3" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
-          </div>
-          <div>
-            <label htmlFor="drone" className="block text-sm font-medium text-gray-700">Assigned Drone</label>
-            <select id="drone" value={assignedDrone} onChange={(e) => setAssignedDrone(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-              <option value="">Select Drone</option>
-              <option value="Drone Alpha">Drone Alpha</option>
-              <option value="Drone Beta">Drone Beta</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="operator" className="block text-sm font-medium text-gray-700">Assigned Operator</label>
-            <select id="operator" value={assignedOperator} onChange={(e) => setAssignedOperator(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-              <option value="">Select Operator</option>
-              <option value="Pilot John Doe">Pilot John Doe</option>
-              <option value="Pilot Jane Smith">Pilot Jane Smith</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date</label>
-              <input type="date" id="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
-            </div>
-            <div>
-              <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date</label>
-              <input type="date" id="endDate" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-3 mt-6">
-            <button type="button" onClick={handleBackToList} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">
-              Save Pilot Mission
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  };
-
-  // Sub-component for Create Ground Station Mission Form
-  const CreateGroundStationMissionForm = () => {
-    const [name, setName] = useState('');
-    const [objectives, setObjectives] = useState('');
-    const [assignedDrone, setAssignedDrone] = useState('');
-    const [assignedGS, setAssignedGS] = useState('');
-    const [schedule, setSchedule] = useState('One-time');
-    const [flightPath, setFlightPath] = useState('');
-
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      handleSaveNewMission({
-        name,
-        objectives,
-        type: 'Ground Station',
-        drone: assignedDrone,
-        groundStation: assignedGS,
-        schedule,
-        flightPath,
-        startDate: new Date().toISOString().slice(0, 10), // Auto-set current date for simplicity
-        endDate: 'Ongoing', // Or calculate based on schedule
-      });
-    };
-
-    return (
-      <div className="p-6 bg-white rounded-xl shadow-md">
-        <h3 className="text-2xl font-bold text-gray-800 mb-4">Create Ground Station Mission</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Mission Name</label>
-            <input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
-          </div>
-          <div>
-            <label htmlFor="objectives" className="block text-sm font-medium text-gray-700">Objectives</label>
-            <textarea id="objectives" value={objectives} onChange={(e) => setObjectives(e.target.value)} rows="3" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
-          </div>
-          <div>
-            <label htmlFor="drone" className="block text-sm font-medium text-gray-700">Assigned Drone</label>
-            <select id="drone" value={assignedDrone} onChange={(e) => setAssignedDrone(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-              <option value="">Select Drone</option>
-              <option value="Drone Beta">Drone Beta</option>
-              <option value="Drone Gamma">Drone Gamma</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="groundStation" className="block text-sm font-medium text-gray-700">Assigned Ground Station</label>
-            <select id="groundStation" value={assignedGS} onChange={(e) => setAssignedGS(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
-              <option value="">Select Ground Station</option>
-              <option value="Ground Station Alpha">Ground Station Alpha</option>
-              <option value="Ground Station Gamma">Ground Station Gamma</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="schedule" className="block text-sm font-medium text-gray-700">Schedule</label>
-            <select id="schedule" value={schedule} onChange={(e) => setSchedule(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-              <option value="One-time">One-time</option>
-              <option value="Daily">Daily</option>
-              <option value="Weekly">Weekly</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="flightPath" className="block text-sm font-medium text-gray-700">Flight Path (Coordinates/Description)</label>
-            <textarea id="flightPath" value={flightPath} onChange={(e) => setFlightPath(e.target.value)} rows="2" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
-          </div>
-          <div className="flex justify-end space-x-3 mt-6">
-            <button type="button" onClick={handleBackToList} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">
-              Save Ground Station Mission
-            </button>
-          </div>
-        </form>
-      </div>
-    );
-  };
-
-  // Sub-component for Mission Details View
-  const MissionDetailsView = ({ mission, onBack }) => {
-    if (!mission) return <div className="text-center text-gray-500">Mission not found.</div>;
-
-    const getStatusColor = (status) => {
-      switch (status) {
-        case 'Planned': return 'bg-blue-100 text-blue-800';
-        case 'Ongoing': return 'bg-yellow-100 text-yellow-800';
-        case 'Completed': return 'bg-green-100 text-green-800';
-        default: return 'bg-gray-100 text-gray-800';
+      const data = await response.json();
+      if (response.ok) {
+        setMissions(prev => [...prev, {
+          ...data,
+          startTime: data.startTime ? new Date(data.startTime) : null, // Convert back to Date object
+          endTime: data.endTime ? new Date(data.endTime) : null,     // Convert back to Date object
+        }]);
+        displayMessage("Mission added successfully!", 'success');
+        setShowAddModal(false);
+        setNewMission({ id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '', progress: 0, details: '', waypoints: 0, area: '', payload: '' });
+      } else {
+        displayMessage(`Failed to add mission: ${data.error}`, 'error');
       }
-    };
-
-    return (
-      <div className="p-6 bg-white rounded-xl shadow-md">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-bold text-gray-800">Mission Details: {mission.name}</h3>
-          <button onClick={onBack} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-            Back to Missions
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-2">Type: <span className="font-medium text-gray-800">{mission.type} Mission</span></p>
-            <p className="text-sm text-gray-600 mb-2">Status: <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(mission.status)}`}>{mission.status}</span></p>
-            <p className="text-sm text-gray-600 mb-2">Assigned Drone: <span className="font-medium text-gray-800">{mission.drone}</span></p>
-            {mission.type === 'Pilot' && <p className="text-sm text-gray-600 mb-2">Assigned Operator: <span className="font-medium text-gray-800">{mission.operator}</span></p>}
-            {mission.type === 'Ground Station' && <p className="text-sm text-gray-600 mb-2">Assigned Ground Station: <span className="font-medium text-gray-800">{mission.groundStation}</span></p>}
-            <p className="text-sm text-gray-600 mb-2">Start Date: <span className="font-medium text-gray-800">{mission.startDate}</span></p>
-            {mission.endDate && <p className="text-sm text-gray-600">End Date: <span className="font-medium text-gray-800">{mission.endDate}</span></p>}
-          </div>
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-gray-800 mb-2">Objectives:</h4>
-            <p className="text-sm text-gray-700">{mission.objectives}</p>
-            {mission.flightPath && <p className="text-sm text-gray-700 mt-2">Flight Path: <span className="font-medium">{mission.flightPath}</span></p>}
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h4 className="font-semibold text-gray-800 mb-2">Mission Progress:</h4>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${mission.progress}%` }}></div>
-          </div>
-          <p className="text-right text-sm text-gray-600 mt-1">{mission.progress}% Completed</p>
-        </div>
-
-        {mission.media.length > 0 && (
-          <div className="mb-6">
-            <h4 className="font-semibold text-gray-800 mb-2">Recorded Media:</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {mission.media.map(media => (
-                <div key={media.id} className="relative group rounded-lg overflow-hidden shadow-sm border border-gray-200">
-                  <img src={media.url} alt={media.caption} className="w-full h-24 object-cover" />
-                  <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    {media.type === 'video' ? <PlayCircle className="w-8 h-8 text-white" /> : <Image className="w-8 h-8 text-white" />}
-                  </div>
-                  <p className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 to-transparent text-white text-xs p-2 truncate">{media.caption}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {mission.incidents.length > 0 && (
-          <div className="mb-6">
-            <h4 className="font-semibold text-gray-800 mb-2">Incident Reports:</h4>
-            <ul className="space-y-2">
-              {mission.incidents.map(incident => (
-                <li key={incident.id} className="flex items-start p-3 bg-red-50 rounded-md text-sm text-red-800">
-                  <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
-                  <div>
-                    <p className="font-semibold">{incident.description}</p>
-                    <p className="text-xs text-red-600 mt-1">Time: {incident.time}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="flex justify-end space-x-3 mt-6">
-          <button className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-indigo-700">
-            Generate Report
-          </button>
-          {mission.status !== 'Completed' && (
-            <button className="px-4 py-2 bg-yellow-500 text-white rounded-md shadow-sm text-sm font-medium hover:bg-yellow-600">
-              Edit Mission
-            </button>
-          )}
-          <button className="px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700">
-            Delete Mission
-          </button>
-        </div>
-      </div>
-    );
+    } catch (error) {
+      console.error('Error adding mission:', error);
+      displayMessage('Error adding mission.', 'error');
+    }
   };
 
+  const handleDeleteMission = async (id) => {
+    if (window.confirm("Are you sure you want to delete this mission?")) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/missions/${id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          setMissions(prev => prev.filter(mission => mission.id !== id));
+          displayMessage("Mission deleted.", 'info');
+        } else {
+          const data = await response.json();
+          displayMessage(`Failed to delete mission: ${data.error}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting mission:', error);
+        displayMessage('Error deleting mission.', 'error');
+      }
+    }
+  };
 
-  // Main render logic for Missions component
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Active': return 'bg-green-100 text-green-800';
+      case 'Scheduled': return 'bg-blue-100 text-blue-800';
+      case 'Completed': return 'bg-gray-100 text-gray-800';
+      case 'Cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
-      {currentView === 'list' && (
-        <>
-          <h2 className="text-3xl font-bold text-gray-800 mb-6">Missions Overview</h2>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Missions Management</h2>
 
-          {/* Create Mission Buttons */}
-          <div className="flex space-x-4 mb-6">
-            <div
-              onClick={() => handleCreateMission('pilot')}
-              className="flex flex-col items-center justify-center p-6 border border-gray-200 rounded-xl shadow-sm text-center w-64 h-48 hover:shadow-md transition-shadow duration-200 cursor-pointer bg-white"
-            >
-              <PlusCircle className="w-12 h-12 text-blue-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-800">Create Pilot Mission</h3>
-              <p className="text-sm text-gray-600 mt-2">Manual flight operations.</p>
-            </div>
-            <div
-              onClick={() => handleCreateMission('ground')}
-              className="flex flex-col items-center justify-center p-6 border border-gray-200 rounded-xl shadow-sm text-center w-64 h-48 hover:shadow-md transition-shadow duration-200 cursor-pointer bg-white"
-            >
-              <PlusCircle className="w-12 h-12 text-teal-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-800">Create Ground Station Mission</h3>
-              <p className="text-sm text-gray-600 mt-2">Automated scheduled operations.</p>
-            </div>
-          </div>
+      <div className="mb-6 flex justify-end">
+        <button onClick={() => setShowAddModal(true)} className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md">
+          <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
+        </button>
+      </div>
 
-          {/* Mission List */}
-          <div className="bg-white rounded-xl shadow-md p-6 flex-1">
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">All Missions</h3>
-
-            {/* Filter Tabs */}
-            <div className="flex border-b border-gray-200 mb-4">
-              {['All', 'Planned', 'Ongoing', 'Completed'].map(status => (
-                <button
-                  key={status}
-                  className={`px-4 py-2 text-sm font-medium ${
-                    // For now, 'All' is the only active filter. Extend this with state for actual filtering.
-                    status === 'All' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-
-            {missions.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No missions found. Start by creating a new mission!</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operator/GS</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Date</th>
-                      <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {missions.map((mission) => (
-                      <tr key={mission.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{mission.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mission.type}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            mission.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                            mission.status === 'Ongoing' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-blue-100 text-blue-800'
-                          }`}>
-                            {mission.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mission.drone}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mission.operator || mission.groundStation}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mission.startDate}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <button onClick={() => handleViewDetails(mission.id)} className="text-blue-600 hover:text-blue-900 mr-3">View Details</button>
-                          <button className="text-indigo-600 hover:text-indigo-900">Edit</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      {showAddModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">Create New Mission</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="missionName" className="block text-sm font-medium text-gray-700">Mission Name</label>
+                <input type="text" id="missionName" value={newMission.name} onChange={(e) => setNewMission({ ...newMission, name: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
               </div>
-            )}
+              <div>
+                <label htmlFor="missionDrone" className="block text-sm font-medium text-gray-700">Drone ID</label>
+                <input type="text" id="missionDrone" value={newMission.drone} onChange={(e) => setNewMission({ ...newMission, drone: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
+              </div>
+              <div>
+                <label htmlFor="missionStartTime" className="block text-sm font-medium text-gray-700">Start Time</label>
+                <input type="datetime-local" id="missionStartTime" value={newMission.startTime} onChange={(e) => setNewMission({ ...newMission, startTime: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
+              </div>
+              <div>
+                <label htmlFor="missionEndTime" className="block text-sm font-medium text-gray-700">End Time</label>
+                <input type="datetime-local" id="missionEndTime" value={newMission.endTime} onChange={(e) => setNewMission({ ...newMission, endTime: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
+              </div>
+              <div>
+                <label htmlFor="missionDetails" className="block text-sm font-medium text-gray-700">Details</label>
+                <textarea id="missionDetails" value={newMission.details} onChange={(e) => setNewMission({ ...newMission, details: e.target.value })} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></textarea>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
+              <button onClick={handleAddMission} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Create Mission</button>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      {currentView === 'create-pilot' && <CreatePilotMissionForm />}
-      {currentView === 'create-ground' && <CreateGroundStationMissionForm />}
-      {currentView === 'details' && selectedMission && <MissionDetailsView mission={selectedMission} onBack={handleBackToList} />}
+      {missions.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No missions found. Create a new mission to get started!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {missions.map(mission => (
+            <div key={mission.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">{mission.name}</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(mission.status)}`}>
+                  {mission.status}
+                </span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4 flex-grow">{mission.details}</p>
+
+              <div className="space-y-2 text-sm text-gray-700 mb-4">
+                <p className="flex items-center"><Drone className="w-4 h-4 mr-2 text-blue-500" /> Drone: <span className="font-medium ml-1">{mission.drone}</span></p>
+                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Start: <span className="font-medium ml-1">{new Date(mission.startTime).toLocaleString()}</span></p>
+                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> End: <span className="font-medium ml-1">{new Date(mission.endTime).toLocaleString()}</span></p>
+                <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-green-500" /> Progress: <span className="font-medium ml-1">{mission.progress}%</span></p>
+              </div>
+
+              {mission.status === 'Active' && (
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                  <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${mission.progress}%` }}></div>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 mt-auto">
+                <button className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="View Details">
+                  <Eye className="w-5 h-5" />
+                </button>
+                <button className="p-2 rounded-full text-blue-500 hover:bg-blue-100 hover:text-blue-700 transition-colors" title="Edit Mission">
+                  <Edit className="w-5 h-5" />
+                </button>
+                <button onClick={() => handleDeleteMission(mission.id)} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete Mission">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -897,7 +615,7 @@ const ConfirmationModal = ({ message, onConfirm, onCancel }) => {
         </div>
         <p className="text-gray-700 mb-6">{message}</p>
         <div className="flex justify-end space-x-3">
-          <button onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <button onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
             Cancel
           </button>
           <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700">
@@ -957,11 +675,11 @@ const AssetList = ({ title, assets, onAddItem, onViewDetails, assetTypeIcon: Ass
   return (
     <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
       <h2 className="text-3xl font-bold text-gray-800 mb-6">{title}</h2>
-
+      
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
         <button
           onClick={onAddItem}
-          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105 w-full sm:w-auto justify-center"
+          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:-translate-y-1 shadow-md w-full sm:w-auto justify-center"
         >
           <Plus className="w-5 h-5 mr-2" /> Add New {title.replace(' Inventory', '').replace(' Management', '')}
         </button>
@@ -1059,7 +777,7 @@ const AssetDetails = ({ asset, onBack, onEdit, onDelete, onViewMaintenanceHistor
           <p className="text-gray-700 text-lg">Model: <span className="font-semibold">{asset.model}</span></p>
           <p className="text-gray-700 text-lg">Manufacturer: <span className="font-semibold">{asset.manufacturer}</span></p>
           <p className="text-gray-700 text-lg">Unique ID: <span className="font-semibold">{asset.uniqueId}</span></p>
-
+          
           {asset.type === 'Drone' && (
             <>
               <p className="text-gray-700 text-lg">Last Location: <span className="font-semibold">{asset.lastLocation}</span></p>
@@ -1265,43 +983,142 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
 
 
 // --- INLINED Drones Component ---
-// Inside the Drones component
-  const handleAddDrone = async () => {
-  if (!newDrone.id || !newDrone.name) {
-    displayMessage("Drone ID and Name are required.", 'error');
-    return;
-  }
-  try {
-    const response = await fetch('http://localhost:5000/api/drones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: newDrone.id, // Ensure ID is sent
-        name: newDrone.name,
-        status: newDrone.status,
-        battery: newDrone.battery,
-        location: newDrone.location,
-        last_flight: newDrone.lastFlight ? new Date(newDrone.lastFlight).toISOString() : null, // Convert to ISO string or null
-        flight_hours: newDrone.flightHours, // Ensure this matches backend field name
-        // Add other fields as per your Drone model in Flask
-      }),
-    });
-    const data = await response.json();
-    if (response.ok) {
-      setDrones(prev => [...prev, {
-        ...data,
-        lastFlight: data.last_flight ? new Date(data.last_flight) : null, // Convert back to Date object
-      }]);
-      displayMessage("Drone added successfully!", 'success');
-      setShowAddModal(false);
-      setNewDrone({ id: '', name: '', status: 'Offline', battery: 0, location: '', lastFlight: '', flightHours: 0 });
-    } else {
-      displayMessage(`Failed to add drone: ${data.error || response.statusText}`, 'error');
+const Drones = () => {
+  const [currentView, setCurrentView] = useState('list'); // 'list', 'add-drone', 'edit-drone', 'details', 'maintenance-history'
+  const [selectedDrone, setSelectedDrone] = useState(null);
+  const [confirmingDeleteDrone, setConfirmingDeleteDrone] = useState(null);
+
+  const [drones, setDrones] = useState([
+    {
+      id: 'd1',
+      name: 'AirVibe Falcon 100',
+      model: 'AV-F100',
+      manufacturer: 'AirVibe Tech',
+      uniqueId: 'DRN-AV-001',
+      status: 'Available',
+      lastLocation: 'Hangar 3, Muscat',
+      flightHours: 125.5,
+      payloadCapacity: 2.5,
+      imageUrl: 'https://placehold.co/400x300/4a90e2/ffffff?text=AirVibe+F100',
+      type: 'Drone',
+      maintenanceHistory: [
+        { date: '2025-06-01', description: 'Annual check-up, firmware update.', performedBy: 'Tech Team A', cost: 150 },
+        { date: '2025-03-10', description: 'Propeller replacement after minor incident.', performedBy: 'Tech Team B', cost: 75 },
+      ],
+    },
+    {
+      id: 'd2',
+      name: 'SkyGuard Sentinel',
+      model: 'SG-S200',
+      manufacturer: 'SkyGuard Systems',
+      uniqueId: 'DRN-SG-002',
+      status: 'Deployed',
+      lastLocation: 'Mission Alpha, Site C',
+      flightHours: 89.2,
+      payloadCapacity: 1.8,
+      imageUrl: 'https://placehold.co/400x300/7ed321/ffffff?text=SkyGuard+S200',
+      type: 'Drone',
+      maintenanceHistory: [
+        { date: '2025-07-05', description: 'Pre-deployment system check.', performedBy: 'Pilot John Doe' },
+      ],
+    },
+    {
+      id: 'd3',
+      name: 'AeroScout Pro',
+      model: 'ASP-300',
+      manufacturer: 'AeroDyne Solutions',
+      uniqueId: 'DRN-AD-003',
+      status: 'In Maintenance',
+      lastLocation: 'Workshop Bay 1',
+      flightHours: 210.0,
+      payloadCapacity: 3.0,
+      imageUrl: 'https://placehold.co/400x300/f5a623/ffffff?text=AeroScout+P300',
+      type: 'Drone',
+      maintenanceHistory: [
+        { date: '2025-07-18', description: 'Scheduled 200-hour service and sensor calibration.', performedBy: 'Certified Service' },
+      ],
+    },
+  ]);
+
+  const handleAddDrone = () => setCurrentView('add-drone');
+  const handleViewDroneDetails = (id) => {
+    setSelectedDrone(drones.find(drone => drone.id === id));
+    setCurrentView('details');
+  };
+  const handleEditDrone = () => {
+    setCurrentView('edit-drone');
+  };
+  const handleDeleteDrone = () => {
+    setConfirmingDeleteDrone(selectedDrone.id);
+  };
+  const handleConfirmDeleteDrone = () => {
+    setDrones(drones.filter(drone => drone.id !== confirmingDeleteDrone));
+    setConfirmingDeleteDrone(null);
+    setSelectedDrone(null); // Clear selected drone if it was the one deleted
+    setCurrentView('list');
+  };
+  const handleCancelDeleteDrone = () => {
+    setConfirmingDeleteDrone(null);
+  };
+  const handleViewDroneMaintenanceHistory = () => {
+    setCurrentView('maintenance-history');
+  };
+
+  const handleSaveDrone = (updatedDrone) => {
+    if (currentView === 'add-drone') {
+      setDrones([...drones, updatedDrone]);
+    } else if (currentView === 'edit-drone') {
+      setDrones(drones.map(drone => (drone.id === updatedDrone.id ? updatedDrone : drone)));
+      setSelectedDrone(updatedDrone); // Update selected drone in state
     }
-  } catch (error) {
-    console.error('Error adding drone:', error);
-    displayMessage('Error adding drone: Network issue or server offline.', 'error');
+    setCurrentView('list');
+  };
+  
+  const handleBackToDroneList = () => {
+    setCurrentView('list');
+    setSelectedDrone(null);
+  };
+
+  if (currentView === 'add-drone') {
+    return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" />;
   }
+  if (currentView === 'edit-drone') {
+    return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" initialData={selectedDrone} />;
+  }
+  if (currentView === 'details') {
+    return (
+      <>
+        <AssetDetails
+          asset={selectedDrone}
+          onBack={handleBackToDroneList}
+          onEdit={handleEditDrone}
+          onDelete={handleDeleteDrone}
+          onViewMaintenanceHistory={handleViewDroneMaintenanceHistory}
+          assetTypeIcon={Drone}
+        />
+        {confirmingDeleteDrone && (
+          <ConfirmationModal
+            message={`Are you sure you want to delete drone "${selectedDrone?.name}"? This action cannot be undone.`}
+            onConfirm={handleConfirmDeleteDrone}
+            onCancel={handleCancelDeleteDrone}
+          />
+        )}
+      </>
+    );
+  }
+  if (currentView === 'maintenance-history') {
+    return <MaintenanceHistoryView asset={selectedDrone} onBack={() => setCurrentView('details')} />;
+  }
+
+  return (
+    <AssetList
+      title="Drone Inventory"
+      assets={drones}
+      onAddItem={handleAddDrone}
+      onViewDetails={handleViewDroneDetails}
+      assetTypeIcon={Drone}
+    />
+  );
 };
 
 // --- INLINED GroundStations Component ---
@@ -1387,7 +1204,7 @@ const GroundStations = () => {
     return <AddItemForm title="Ground Station" onSave={handleSaveGS} onCancel={handleBackToGSList} assetType="Ground Station" />;
   }
   if (currentView === 'edit-gs') {
-    return <AddItemForm title="Ground Station" onSave={handleSaveGS} onCancel={handleBackToGSList} assetType="Ground Station" initialData={selectedGS} />;
+    return <AddItemForm title="Ground Station" onSave={handleSaveGS} ononCancel={handleBackToGSList} assetType="Ground Station" initialData={selectedGS} />;
   }
   if (currentView === 'details') {
     return (
@@ -1423,9 +1240,9 @@ const GroundStations = () => {
       assetTypeIcon={Factory}
     />
   );
-    };
+};
 
-  // --- INLINED Equipment Component ---
+// --- INLINED Equipment Component ---
 const Equipment = () => {
   const [currentView, setCurrentView] = useState('list'); // 'list', 'add-equipment', 'edit-equipment', 'details', 'maintenance-history'
   const [selectedEquipment, setSelectedEquipment] = useState(null);
@@ -1858,15 +1675,15 @@ const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelet
           {media.type === 'video' ? (
             <>
               <video ref={videoRef} controls={false} src={media.url} className="w-full h-auto max-h-96 object-contain"></video>
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 flex justify-center items-center p-2 space-x-4">
-                <button onClick={handleRewind} className="text-white hover:text-gray-300"><Rewind className="w-6 h-6" /></button>
-                <button onClick={togglePlayPause} className="text-white hover:text-gray-300">
+             <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 flex justify-center items-center p-2 space-x-4">
+              <button onClick={handleRewind} className="text-white hover:text-gray-300"><Rewind className="w-6 h-6" /></button>
+               <button onClick={togglePlayPause} className="text-white hover:text-gray-300">
                   {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
-                </button>
-                <button onClick={handleFastForward} className="text-white hover:text-gray-300"><FastForward className="w-6 h-6" /></button>
-                <input type="range" min="0" max="1" step="0.01" defaultValue="1" onChange={(e) => { if(videoRef.current) videoRef.current.volume = e.target.value; }} className="w-24" />
-                <Volume2 className="w-5 h-5 text-white" />
-              </div>
+             </button>
+                <button onClick={handleFastForward} className="text-white hover:text-gray-300"><FastForward className="w-6 h-6" /></button> {/* Corrected this line */}
+                     <input type="range" min="0" max="1" step="0.01" defaultValue="1" onChange={(e) => { if(videoRef.current) videoRef.current.volume = e.target.value; }} className="w-24" />
+               <Volume2 className="w-5 h-5 text-white" />
+                </div>
             </>
           ) : (
             <img src={media.url} alt={media.title} className="w-full h-auto max-h-96 object-contain" />
@@ -1926,7 +1743,7 @@ const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelet
 
 
 // --- INLINED Media Component ---
-const Media = ({ mediaItems, setMediaItems }) => { // Receive mediaItems and setMediaItems as props
+const Media = ({ mediaItems, setMediaItems, displayMessage }) => { // Receive mediaItems and setMediaItems as props
   const [currentView, setCurrentView] = useState('list'); // 'list', 'details', 'upload', 'edit-media'
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1934,185 +1751,156 @@ const Media = ({ mediaItems, setMediaItems }) => { // Receive mediaItems and set
   const [confirmingDeleteMedia, setConfirmingDeleteMedia] = useState(null);
 
 
-  const allTags = ['perimeter', 'security', 'day-flight', 'inspection', 'factory', 'roof', 'infrastructure', 'bridge', 'analysis', 'live-capture']; // Master list of tags
+  // Ensure mediaItems is an array before filtering
+// Inside the Media component
+const filteredMedia = (mediaItems || []).filter(item => {
+  const matchesType = filterType === 'all' || item.type === filterType;
+  const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                        (item.droneId && item.droneId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                        (item.missionId && item.missionId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                        (item.tags && item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
 
-  const filteredMedia = mediaItems.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.droneId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.missionId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                          item.gps.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.timestamp.toLowerCase().includes(searchTerm.toLowerCase());
+  return matchesType && matchesSearch; // This line should be fine if matchesType and matchesSearch are defined
+});
 
-    const matchesFilter = filterType === 'all' || item.type === filterType;
-
-    return matchesSearch && matchesFilter;
-  });
-
-  const handleViewDetails = (id) => {
-    setSelectedMedia(mediaItems.find(item => item.id === id));
-    setCurrentView('details');
+  const handleUploadMedia = async (newMediaData) => { // This function should be passed as a prop from App
+      try {
+          const response = await fetch('http://localhost:5000/api/media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  title: newMediaData.title,
+                  type: newMediaData.type,
+                  url: newMediaData.url,
+                  thumbnail: newMediaData.thumbnail,
+                  drone_id: newMediaData.droneId,
+                  mission_id: newMediaData.missionId,
+                  timestamp: new Date().toISOString(),
+                  gps: newMediaData.gps || 'N/A', // Ensure GPS is handled
+                  tags: newMediaData.tags || [], // Ensure tags are an array
+                  description: newMediaData.description,
+              }),
+          });
+          const data = await response.json();
+          if (response.ok) {
+              setMediaItems(prevItems => [...prevItems, {
+                  ...data,
+                  date: data.timestamp ? new Date(data.timestamp) : null,
+              }]);
+              displayMessage("Media uploaded successfully!", 'success');
+              // Optionally close modal or clear form here if you have one
+              // setCurrentView('list'); // If this component handles view state
+          } else {
+              displayMessage(`Failed to upload media: ${data.error || response.statusText}`, 'error');
+          }
+      } catch (error) {
+          console.error('Error uploading media:', error);
+          displayMessage('Error uploading media: Network issue or server offline.', 'error');
+      }
   };
 
-  const handleBackToList = () => {
-    setCurrentView('list');
-    setSelectedMedia(null);
-  };
 
-  const handleUploadMedia = (newMedia) => {
-    setMediaItems(prevItems => [...prevItems, { id: `m${prevItems.length + 1}`, ...newMedia }]);
-    setCurrentView('list');
+  const handleDeleteMedia = async (id) => {
+    if (window.confirm("Are you sure you want to delete this media item?")) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/media/${id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          setMediaItems(prev => prev.filter(item => item.id !== id));
+          displayMessage("Media item deleted.", 'info');
+        } else {
+          const data = await response.json();
+          displayMessage(`Failed to delete media: ${data.error || response.statusText}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting media:', error);
+        displayMessage('Error deleting media: Network issue or server offline.', 'error');
+      }
+    }
   };
-
-  const handleUpdateMedia = (updatedMedia) => {
-    setMediaItems(prevItems => prevItems.map(item => (item.id === updatedMedia.id ? updatedMedia : item)));
-    setSelectedMedia(updatedMedia); // Update selected media in state
-    setCurrentView('details'); // Stay on details page after edit
-  };
-
-  const handleDeleteMedia = (id) => {
-    setConfirmingDeleteMedia(id);
-  };
-
-  const handleConfirmDeleteMedia = () => {
-    setMediaItems(mediaItems.filter(item => item.id !== confirmingDeleteMedia));
-    setConfirmingDeleteMedia(null);
-    setSelectedMedia(null);
-    setCurrentView('list');
-  };
-
-  const handleCancelDeleteMedia = () => {
-    setConfirmingDeleteMedia(null);
-  };
-
-  const handleAddTagToMedia = (mediaId, newTag) => {
-    setMediaItems(prevItems => prevItems.map(item =>
-      item.id === mediaId
-        ? { ...item, tags: [...new Set([...item.tags, newTag])] } // Add unique tag
-        : item
-    ));
-    setSelectedMedia(prev => prev ? { ...prev, tags: [...new Set([...prev.tags, newTag])] } : null); // Update selected media if viewing
-  };
-
-  const handleRemoveTagFromMedia = (mediaId, tagToRemove) => {
-    setMediaItems(prevItems => prevItems.map(item =>
-      item.id === mediaId
-        ? { ...item, tags: item.tags.filter(tag => tag !== tagToRemove) }
-        : item
-    ));
-    setSelectedMedia(prev => prev ? { ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) } : null); // Update selected media if viewing
-  };
-
 
   return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
-      {currentView === 'list' && (
-        <>
-          <h2 className="text-3xl font-bold text-gray-800 mb-6">Captured Media Library</h2>
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
-            <button
-              onClick={() => setCurrentView('upload')}
-              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105 w-full sm:w-auto justify-center"
-            >
-              <Upload className="w-5 h-5 mr-2" /> Upload Media
-            </button>
-            <div className="flex space-x-2 bg-white p-2 rounded-lg shadow-sm">
-              <button
-                onClick={() => setFilterType('all')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-              >
-                <Folder className="w-4 h-4 inline-block mr-1" /> All Media
-              </button>
-              <button
-                onClick={() => setFilterType('image')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'image' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-              >
-                <ImageIcon className="w-4 h-4 inline-block mr-1" /> Images
-              </button>
-              <button
-                onClick={() => setFilterType('video')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'video' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-              >
-                <VideoIcon className="w-4 h-4 inline-block mr-1" /> Videos
-              </button>
-            </div>
-            <input
-              type="text"
-              placeholder="Search media by title, drone, mission, date, tags, or location..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto"
-            />
-          </div>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)]"> {/* Changed to min-h-full to occupy height */}
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Captured Media Library</h2>
 
-          {filteredMedia.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
-              <p className="text-gray-500 text-lg">No media found matching your criteria.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 flex-1">
-              {filteredMedia.map(item => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow duration-200 flex flex-col"
-                  onClick={() => handleViewDetails(item.id)}
-                >
-                  <div className="relative w-full h-48 bg-gray-200 flex items-center justify-center overflow-hidden">
-                    {item.type === 'video' ? (
-                      <video src={item.thumbnail} className="w-full h-full object-cover" muted />
-                    ) : (
-                      <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover" />
-                    )}
-                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      {item.type === 'video' ? <PlayCircle className="w-12 h-12 text-white" /> : <ImageIcon className="w-12 h-12 text-white" />}
-                    </div>
-                  </div>
-                  <div className="p-4 flex-1">
-                    <h3 className="text-lg font-semibold text-gray-800 truncate">{item.title}</h3>
-                    <p className="text-sm text-gray-600">Type: {item.type}</p>
-                    <p className="text-sm text-gray-600">Drone: {item.droneId}</p>
-                    <p className="text-sm text-gray-600">Mission: {item.missionId}</p>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {item.tags.map(tag => (
-                        <span key={tag} className="bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full">{tag}</span>
-                      ))}
-                    </div>
-                  </div>
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
+        <button
+          onClick={() => { /* Your upload modal trigger logic here */ handleUploadMedia({ /* dummy data or open modal */ title: "New Media", type: "image", url: "https://placehold.co/600x400", droneId: "DRN-TEST", missionId: "MIS-TEST", description: "Test upload" })}} // Example trigger
+          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 w-full sm:w-auto justify-center"
+        >
+          <Upload className="w-5 h-5 mr-2" /> Upload Media
+        </button>
+        <div className="flex space-x-2 bg-white p-2 rounded-lg shadow-sm">
+          <button
+            onClick={() => setFilterType('all')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilterType('image')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'image' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Images
+          </button>
+          <button
+            onClick={() => setFilterType('video')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'video' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Videos
+          </button>
+        </div>
+        <div className="relative w-full sm:w-auto">
+          <input
+            type="text"
+            placeholder="Search media..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-64 p-2 pl-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+          />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+        </div>
+      </div>
+
+      {filteredMedia.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No media items found matching your criteria.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 flex-1">
+          {filteredMedia.map(item => (
+            <div key={item.id} className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col">
+              <div className="relative w-full h-48 bg-gray-200 flex items-center justify-center">
+                {item.type === 'image' ? (
+                  <img src={item.src} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Image+Error'; }} />
+                ) : (
+                  <video src={item.src} controls className="w-full h-full object-cover" poster={item.thumb} onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Video+Error'; }}></video>
+                )}
+                <span className="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full flex items-center">
+                  {item.type === 'video' ? <VideoIcon className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} {item.type.toUpperCase()}
+                </span>
+              </div>
+              <div className="p-4 flex-grow flex flex-col">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-gray-600 text-sm flex-grow mb-2">{item.description}</p>
+                <div className="flex justify-between items-center text-xs text-gray-500 mt-auto">
+                  <span>Drone ID: {item.droneId}</span>
+                  <span>{item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}</span>
                 </div>
-              ))}
+                <div className="flex justify-end space-x-2 mt-3">
+                  <button className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="Download">
+                    <Download className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => handleDeleteMedia(item.id)} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
-        </>
-      )}
-      {currentView === 'details' && selectedMedia && (
-        <MediaDetailView
-          media={selectedMedia}
-          onBack={handleBackToList}
-          onAddTag={handleAddTagToMedia}
-          onRemoveTag={handleRemoveTagFromMedia}
-          onEdit={() => setCurrentView('edit-media')}
-          onDelete={() => handleDeleteMedia(selectedMedia.id)}
-        />
-      )}
-      {currentView === 'upload' && (
-        <UploadMediaForm
-          onSave={handleUploadMedia}
-          onCancel={handleBackToList}
-        />
-      )}
-      {currentView === 'edit-media' && selectedMedia && (
-        <EditMediaForm
-          initialData={selectedMedia}
-          onSave={handleUpdateMedia}
-          onCancel={() => setCurrentView('details')} // Go back to details after cancel
-        />
-      )}
-      {confirmingDeleteMedia && (
-        <ConfirmationModal
-          message={`Are you sure you want to delete "${mediaItems.find(item => item.id === confirmingDeleteMedia)?.title}"? This action cannot be undone.`}
-          onConfirm={handleConfirmDeleteMedia}
-          onCancel={handleCancelDeleteMedia}
-        />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -2224,6 +2012,7 @@ const Files = () => {
   const [currentView, setCurrentView] = useState('list'); // 'list', 'upload', 'view-document'
   const [selectedFile, setSelectedFile] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [files, setFiles] = useState([
     {
       id: 'f1',
@@ -2237,7 +2026,6 @@ const Files = () => {
     {
       id: 'f2',
       name: 'Safety Protocol V2.0',
-      type: 'PDF',
       url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', // Another example PDF
       category: 'Safety Protocols',
       uploadDate: '2025-03-05',
@@ -2305,7 +2093,7 @@ const Files = () => {
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
             <button
               onClick={() => setCurrentView('upload')}
-              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105 w-full sm:w-auto justify-center"
+              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:-translate-y-1 shadow-md w-full sm:w-auto justify-center"
             >
               <Upload className="w-5 h-5 mr-2" /> Upload Document
             </button>
@@ -2328,19 +2116,27 @@ const Files = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
-                    <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
+                    <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredFiles.map(file => (
                     <tr key={file.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{file.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{file.type}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{file.category}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{file.uploadDate}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 flex items-center">
+                        {getFileTypeIcon(file.type)} {file.name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {file.type}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {file.size}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {file.uploadDate}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button onClick={() => handleViewFile(file.id)} className="text-blue-600 hover:text-blue-900 mr-3">View</button>
                         <button onClick={() => handleDeleteFile(file.id)} className="text-red-600 hover:text-red-900">Delete</button>
@@ -2484,7 +2280,7 @@ const ChecklistDetailView = ({ checklist, onBack, onComplete }) => {
           Back to Checklists
         </button>
       </div>
-
+      
       <p className="text-gray-700 mb-4">{checklist.description}</p>
 
       {checklist.type === 'completed' && (
@@ -2660,7 +2456,7 @@ const Checklists = () => {
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
             <button
               onClick={handleCreateChecklist}
-              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105 w-full sm:w-auto justify-center"
+              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md w-full sm:w-auto justify-center"
             >
               <Plus className="w-5 h-5 mr-2" /> Create New Checklist
             </button>
@@ -2832,7 +2628,7 @@ const Tags = () => {
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
             <button
               onClick={handleCreateTag}
-              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:scale-105 w-full sm:w-auto justify-center"
+              className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md w-full sm:w-auto justify-center"
             >
               <Plus className="w-5 h-5 mr-2" /> Create New Tag
             </button>
@@ -2893,9 +2689,6 @@ const Tags = () => {
   );
 };
 
-
-// --- INLINED ProfileSettings Component ---
-
 // --- ProfileSettings Component (full implementation) ---
 const ProfileSettings = ({ user, setUser, displayMessage }) => {
   const [newName, setNewName] = useState(user.name);
@@ -2905,39 +2698,84 @@ const ProfileSettings = ({ user, setUser, displayMessage }) => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [newProfilePictureUrl, setNewProfilePictureUrl] = useState(user.profilePicture);
 
-  const handleUpdateProfile = (e) => {
+  const handleUpdateProfile = async (e) => { // Made async
     e.preventDefault();
-    // In a real application, you would send this data to your backend API
-    setUser(prev => ({ ...prev, name: newName, email: newEmail }));
-    displayMessage("Profile updated successfully!", 'success');
+    try {
+      // Assuming a user profile API endpoint like /api/user/profile or /api/users/<userId>
+      const response = await fetch('http://localhost:5000/api/user/profile', { // You need to implement this endpoint in Flask
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, email: newEmail }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setUser(prev => ({ ...prev, name: newName, email: newEmail }));
+        displayMessage("Profile updated successfully!", 'success');
+      } else {
+        displayMessage(`Failed to update profile: ${data.error || response.statusText}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      displayMessage('Error updating profile: Network issue or server offline.', 'error');
+    }
   };
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => { // Made async
     e.preventDefault();
     if (newPassword !== confirmNewPassword) {
       displayMessage("New password and confirmation do not match.", 'error');
       return;
     }
-    if (newPassword.length < 6) { // Basic validation
+    if (newPassword.length < 6) {
       displayMessage("Password must be at least 6 characters long.", 'error');
       return;
     }
-    // In a real application, you would send currentPassword and newPassword to your backend API
-    // For simulation, we just clear the fields and show success.
-    displayMessage("Password changed successfully!", 'success');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmNewPassword('');
+    try {
+      // Assuming a password change API endpoint like /api/user/change_password
+      const response = await fetch('http://localhost:5000/api/user/change_password', { // You need to implement this endpoint in Flask
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        displayMessage("Password changed successfully!", 'success');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+      } else {
+        displayMessage(`Failed to change password: ${data.error || response.statusText}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error changing password:', error);
+      displayMessage('Error changing password: Network issue or server offline.', 'error');
+    }
   };
 
-  const handleUpdateProfilePicture = (e) => {
+  const handleUpdateProfilePicture = async (e) => { // Made async
     e.preventDefault();
     if (newProfilePictureUrl.trim() === '') {
       displayMessage("Please enter a valid image URL.", 'error');
       return;
     }
-    setUser(prev => ({ ...prev, profilePicture: newProfilePictureUrl }));
-    displayMessage("Profile picture updated!", 'success');
+    try {
+      // Assuming a profile picture update API endpoint like /api/user/profile_picture
+      const response = await fetch('http://localhost:5000/api/user/profile_picture', { // You need to implement this endpoint in Flask
+        method: 'POST', // Or PUT
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_picture_url: newProfilePictureUrl }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setUser(prev => ({ ...prev, profilePicture: newProfilePictureUrl }));
+        displayMessage("Profile picture updated!", 'success');
+      } else {
+        displayMessage(`Failed to update picture: ${data.error || response.statusText}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error updating profile picture:', error);
+      displayMessage('Error updating profile picture: Network issue or server offline.', 'error');
+    }
   };
 
   return (
@@ -3112,32 +2950,85 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
   const [filter, setFilter] = useState('all'); // 'all', 'unread', 'read'
 
   // Mark a single notification as read
-  const markAsRead = (id) => {
-    setNotifications(prev => prev.map(notif =>
-      notif.id === id ? { ...notif, read: true } : notif
-    ));
-    displayMessage("Notification marked as read.", 'info');
-  };
-
-  // Mark all notifications as read
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
-    displayMessage("All notifications marked as read.", 'info');
-  };
-
-  // Delete a single notification
-  const deleteNotification = (id) => {
-    if (window.confirm("Are you sure you want to delete this notification?")) {
-      setNotifications(prev => prev.filter(notif => notif.id !== id));
-      displayMessage("Notification deleted.", 'info');
+  const markAsRead = async (id) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/notifications/mark_read/${id}`, {
+        method: 'POST', // Or PUT, depending on your Flask API design
+        headers: { 'Content-Type': 'application/json' },
+        // body: JSON.stringify({ read: true }), // Send if your backend expects a body
+      });
+      if (response.ok) {
+        // Update local state only if backend confirms success
+        setNotifications(prev => prev.map(notif =>
+          notif.id === id ? { ...notif, read: true } : notif
+        ));
+        displayMessage("Notification marked as read.", 'info');
+      } else {
+        const data = await response.json();
+        displayMessage(`Failed to mark notification as read: ${data.error || response.statusText}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      displayMessage('Error marking notification as read: Network issue or server offline.', 'error');
     }
   };
 
-  // Delete all read notifications
-  const deleteAllRead = () => {
+  // Mark all notifications as read (requires a new backend endpoint)
+  const markAllAsRead = async () => {
+    try {
+      // This would ideally be a single API call on the backend, but for now, iterate
+      // or implement a /api/notifications/mark_all_read endpoint on Flask.
+      // For simplicity, we'll mark individually on frontend and assume backend handles it.
+      // A better approach would be to send a single request to Flask to mark all read.
+      const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+      for (const id of unreadIds) {
+        await fetch(`http://localhost:5000/api/notifications/mark_read/${id}`, { method: 'POST' });
+      }
+      setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+      displayMessage("All notifications marked as read.", 'info');
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      displayMessage('Error marking all notifications as read.', 'error');
+    }
+  };
+
+  // Delete a single notification
+  const deleteNotification = async (id) => {
+    if (window.confirm("Are you sure you want to delete this notification?")) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/notifications/delete/${id}`, { // Assuming DELETE /api/notifications/<id>
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          setNotifications(prev => prev.filter(notif => notif.id !== id));
+          displayMessage("Notification deleted.", 'info');
+        } else {
+          const data = await response.json();
+          displayMessage(`Failed to delete notification: ${data.error || response.statusText}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        displayMessage('Error deleting notification: Network issue or server offline.', 'error');
+      }
+    }
+  };
+
+  // Delete all read notifications (requires a new backend endpoint)
+  const deleteAllRead = async () => {
     if (window.confirm("Are you sure you want to delete all read notifications?")) {
-      setNotifications(prev => prev.filter(notif => !notif.read));
-      displayMessage("All read notifications deleted.", 'info');
+      try {
+        // This would ideally be a single API call on the backend, e.g., /api/notifications/delete_read
+        // For simplicity, we'll delete individually on frontend and assume backend handles it.
+        const readIds = notifications.filter(n => n.read).map(n => n.id);
+        for (const id of readIds) {
+          await fetch(`http://localhost:5000/api/notifications/delete/${id}`, { method: 'DELETE' });
+        }
+        setNotifications(prev => prev.filter(notif => !notif.read));
+        displayMessage("All read notifications deleted.", 'info');
+      } catch (error) {
+        console.error('Error deleting all read notifications:', error);
+        displayMessage('Error deleting all read notifications.', 'error');
+      }
     }
   };
 
@@ -3209,7 +3100,7 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
               </div>
               <div className="flex-1">
                 <p className="text-lg font-medium">{notif.message}</p>
-                <p className="text-sm text-gray-500 mt-1">{new Date(notif.timestamp).toLocaleString()}</p>
+                <p className="text-sm text-gray-500 mt-1">{notif.timestamp ? new Date(notif.timestamp).toLocaleString() : 'N/A'}</p>
               </div>
               <div className="flex-shrink-0 flex space-x-2 ml-4">
                 {!notif.read && (
@@ -3238,321 +3129,433 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
 };
 
 // Maintenance Section Component (from previous response, now integrated)
-// Inside the MaintenanceSection component
-const [maintenanceParts, setMaintenanceParts] = useState([]); // Initialize as an empty array
-const handleAddOrUpdatePart = async () => {
-    if (!partName || !submissionDate || !partStatus) {
-        displayMessage("Please fill in all required fields (Part Name, Submission Date, Status).", 'error');
-        return;
+function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMessage }) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newPart, setNewPart] = useState({
+    name: '', status: 'Available', lastMaintenance: '', nextMaintenance: ''
+  });
+
+  const handleAddPart = async () => {
+    if (newPart.name.trim() === '') {
+      displayMessage("Part name cannot be empty.", 'error');
+      return;
     }
-
-    const partData = {
-        name: partName,
-        submission_date: new Date(submissionDate).toISOString(), // Convert to ISO string
-        status: partStatus,
-        delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null, // Convert or null
-    };
-
     try {
-        let response;
-        let data;
-        if (editingPartId) {
-            // Update existing part
-            response = await fetch(`http://localhost:5000/api/maintenance_parts/${editingPartId}`, {
-                method: 'PUT', // Use PUT for updates
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(partData),
-            });
-            data = await response.json();
-            if (response.ok) {
-                setMaintenanceParts(prev => prev.map(part =>
-                    part.id === editingPartId
-                        ? { ...part, ...data, submissionDate: data.submission_date ? new Date(data.submission_date) : null, deliveryDate: data.delivery_date ? new Date(data.delivery_date) : null }
-                        : part
-                ));
-                displayMessage("Maintenance part updated successfully!", 'success');
-                setEditingPartId(null); // Exit editing mode
-            } else {
-                displayMessage(`Failed to update part: ${data.error || response.statusText}`, 'error');
-            }
-        } else {
-            // Add new part
-            response = await fetch('http://localhost:5000/api/maintenance_parts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(partData),
-            });
-            data = await response.json();
-            if (response.ok) {
-                setMaintenanceParts(prev => [...prev, { ...data, submissionDate: data.submission_date ? new Date(data.submission_date) : null, deliveryDate: data.delivery_date ? new Date(data.delivery_date) : null }]);
-                displayMessage("Maintenance part added successfully!", 'success');
-            } else {
-                displayMessage(`Failed to add part: ${data.error || response.statusText}`, 'error');
-            }
-        }
-        // Clear form fields after add/update
-        setPartName('');
-        setSubmissionDate('');
-        setPartStatus('');
-        setDeliveryDate('');
-        setShowAddModal(false); // Close modal if it's open
+      const response = await fetch('http://localhost:5000/api/maintenance_parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+    name: newPart.name,
+    
+    last_maintenance: newPart.lastMaintenance ? new Date(newPart.lastMaintenance).toISOString() : null,
+    next_maintenance: newPart.nextMaintenance ? new Date(newPart.nextMaintenance).toISOString() : null,
+    status: newPart.status,
+}),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMaintenanceParts(prev => [...prev, {
+          ...data,
+          lastMaintenance: data.last_maintenance ? new Date(data.last_maintenance) : null,
+          nextMaintenance: data.next_maintenance ? new Date(data.next_maintenance) : null,
+        }]);
+        displayMessage("Maintenance part added successfully!", 'success');
+        setShowAddModal(false);
+        setNewPart({ name: '', status: 'Available', lastMaintenance: '', nextMaintenance: '' });
+      } else {
+        displayMessage(`Failed to add part: ${data.error || response.statusText}`, 'error');
+      }
     } catch (error) {
-        console.error('Error processing maintenance part:', error);
-        displayMessage('Error processing maintenance part: Network issue or server offline.', 'error');
+      console.error('Error adding maintenance part:', error);
+      displayMessage('Error adding maintenance part: Network issue or server offline.', 'error');
     }
-};
+  };
+
+  const handleDeletePart = async (id) => {
+    if (window.confirm("Are you sure you want to delete this maintenance part?")) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/maintenance_parts/${id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          setMaintenanceParts(prev => prev.filter(part => part.id !== id));
+          displayMessage("Maintenance part deleted.", 'info');
+        } else {
+          const data = await response.json();
+          displayMessage(`Failed to delete part: ${data.error || response.statusText}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting maintenance part:', error);
+        displayMessage('Error deleting maintenance part: Network issue or server offline.', 'error');
+      }
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Available': return 'bg-green-100 text-green-800';
+      case 'In Repair': return 'bg-yellow-100 text-yellow-800';
+      case 'Needs Service': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Maintenance Management</h2>
+
+      <div className="mb-6 flex justify-end">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+        >
+          <PlusCircle className="w-5 h-5 mr-2" /> Add New Part
+        </button>
+      </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">Add New Maintenance Part</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="partName" className="block text-sm font-medium text-gray-700">Part Name</label>
+                <input
+                  type="text"
+                  id="partName"
+                  value={newPart.name}
+                  onChange={(e) => setNewPart({ ...newPart, name: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="partStatus" className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  id="partStatus"
+                  value={newPart.status}
+                  onChange={(e) => setNewPart({ ...newPart, status: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                >
+                  <option value="Available">Available</option>
+                  <option value="In Repair">In Repair</option>
+                  <option value="Needs Service">Needs Service</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="lastMaintenance" className="block text-sm font-medium text-gray-700">Last Maintenance Date</label>
+                <input
+                  type="date"
+                  id="lastMaintenance"
+                  value={newPart.lastMaintenance}
+                  onChange={(e) => setNewPart({ ...newPart, lastMaintenance: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="nextMaintenance" className="block text-sm font-medium text-gray-700">Next Maintenance Date</label>
+                <input
+                  type="date"
+                  id="nextMaintenance"
+                  value={newPart.nextMaintenance}
+                  onChange={(e) => setNewPart({ ...newPart, nextMaintenance: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddPart}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Add Part
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {maintenanceParts.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No maintenance parts found. Add a new part to get started!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {maintenanceParts.map(part => (
+            <div key={part.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">{part.name}</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(part.status)}`}>
+                  {part.status}
+                </span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4 flex-grow">ID: {part.id}</p>
+
+              <div className="space-y-2 text-sm text-gray-700 mb-4">
+                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Last Service: <span className="font-medium ml-1">{part.lastMaintenance ? new Date(part.lastMaintenance).toLocaleDateString() : 'N/A'}</span></p>
+                <p className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-orange-500" /> Next Service: <span className="font-medium ml-1">{part.nextMaintenance ? new Date(part.nextMaintenance).toLocaleDateString() : 'N/A'}</span></p>
+              </div>
+
+              <div className="flex justify-end space-x-2 mt-auto">
+                <button className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="View Details">
+                  <Eye className="w-5 h-5" />
+                </button>
+                <button className="p-2 rounded-full text-blue-500 hover:bg-blue-100 hover:text-blue-700 transition-colors" title="Edit Part">
+                  <Edit className="w-5 h-5" />
+                </button>
+                <button onClick={() => handleDeletePart(part.id)} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete Part">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Incident Section Component (from previous response, now integrated)
 function IncidentSection({ incidents, setIncidents, displayMessage }) {
-    const [incidentWhen, setIncidentWhen] = useState('');
-    const [incidentPlace, setIncidentPlace] = useState('');
-    const [incidentDrone, setIncidentDrone] = useState('');
-    const [incidentReason, setIncidentReason] = useState('');
-    const [incidentRegion, setIncidentRegion] = useState('');
-    const [incidentIssue, setIncidentIssue] = useState('');
-    const [editingIncidentId, setEditingIncidentId] = useState(null); // State to track which incident is being edited
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newIncident, setNewIncident] = useState({
+    type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: ''
+  });
+    
+  const handleAddOrUpdateIncident = async () => {
+    if (!newIncident.message.trim() || !newIncident.when || !newIncident.incidentPlace || !newIncident.incidentDrone || !newIncident.incidentReason || !newIncident.incidentRegion || !newIncident.incidentIssue) { // Corrected validation
+      displayMessage("Please fill in all required fields for incident.", 'error');
+      return;
+    }
 
-    // Function to add or update an incident
-    // Inside the IncidentSection component
-const handleAddOrUpdateIncident = async () => {
-  if (!incidentWhen || !incidentPlace || !incidentDrone || !incidentReason || !incidentRegion || !incidentIssue) {
-    displayMessage("Please fill in all required fields for incident.", 'error');
-    return;
-  }
+    const incidentData = {
+      type: newIncident.type,
+      message: newIncident.message,
+      when: new Date(newIncident.when).toISOString(),
+      place: newIncident.incidentPlace, // Corrected from incidentPlace
+      drone: newIncident.incidentDrone, // Corrected from incidentDrone
+      reason: newIncident.incidentReason, // Corrected from incidentReason
+      region: newIncident.incidentRegion, // Corrected from incidentRegion
+      issue: newIncident.incidentIssue, // Corrected from incidentIssue
+    };
 
-  const incidentData = {
-    type: newIncident.type, // Make sure newIncident.type is set by your form
-    message: newIncident.message, // Make sure newIncident.message is set by your form
-    when: new Date(incidentWhen).toISOString(),
-    place: incidentPlace,
-    drone: incidentDrone,
-    reason: incidentReason,
-    region: incidentRegion,
-    issue: incidentIssue,
+    try {
+      let response;
+      let data;
+      if (editingIncidentId) { // editingIncidentId needs to be defined
+        response = await fetch(`http://localhost:5000/api/incidents/${editingIncidentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(incidentData),
+        });
+        data = await response.json();
+        if (response.ok) {
+          setIncidents(prev => prev.map(inc =>
+            inc.id === editingIncidentId
+              ? { ...inc, ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }
+              : inc
+          ));
+          displayMessage("Incident updated successfully!", 'success');
+          setEditingIncidentId(null);
+        } else {
+          displayMessage(`Failed to update incident: ${data.error || response.statusText}`, 'error');
+        }
+      } else {
+        response = await fetch('http://localhost:5000/api/incidents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...incidentData, resolved: false, timestamp: new Date().toISOString() }),
+        });
+        data = await response.json();
+        if (response.ok) {
+          setIncidents(prev => [...prev, { ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }]);
+          displayMessage("Incident reported successfully!", 'success');
+        } else {
+          displayMessage(`Failed to report incident: ${data.error || response.statusText}`, 'error');
+        }
+      }
+      setNewIncident({ type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: '' });
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Error processing incident:', error);
+      displayMessage('Error processing incident: Network issue or server offline.', 'error');
+    }
   };
 
-  try {
-    let response;
-    let data;
-    if (editingIncidentId) {
-      // Update existing incident
-      response = await fetch(`http://localhost:5000/api/incidents/${editingIncidentId}`, {
+  const handleToggleResolve = async (id, currentResolvedStatus) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/incidents/${id}`, {
         method: 'PUT', // Use PUT for updates
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(incidentData),
+        body: JSON.stringify({ resolved: !currentResolvedStatus }),
       });
-      data = await response.json();
       if (response.ok) {
         setIncidents(prev => prev.map(inc =>
-          inc.id === editingIncidentId
-            ? { ...inc, ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null } // Update with response data
-            : inc
+          inc.id === id ? { ...inc, resolved: !inc.resolved } : inc
         ));
-        displayMessage("Incident updated successfully!", 'success');
-        setEditingIncidentId(null); // Exit editing mode
+        displayMessage("Incident status updated.", 'info');
       } else {
-        displayMessage(`Failed to update incident: ${data.error || response.statusText}`, 'error');
+        const data = await response.json();
+        displayMessage(`Failed to update incident status: ${data.error || response.statusText}`, 'error');
       }
-    } else {
-      // Add new incident
-      response = await fetch('http://localhost:5000/api/incidents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...incidentData, resolved: false, timestamp: new Date().toISOString() }), // New incidents are unresolved by default
-      });
-      data = await response.json();
-      if (response.ok) {
-        setIncidents(prev => [...prev, { ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }]);
-        displayMessage("Incident reported successfully!", 'success');
-      } else {
-        displayMessage(`Failed to report incident: ${data.error || response.statusText}`, 'error');
+    } catch (error) {
+      console.error('Error updating incident status:', error);
+      displayMessage('Error updating incident status: Network issue or server offline.', 'error');
+    }
+  };
+
+  const handleDeleteIncident = async (id) => {
+    if (window.confirm("Are you sure you want to delete this incident?")) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/incidents/${id}`, {
+          method: 'DELETE',
+        });
+        if (response.ok) {
+          setIncidents(prev => prev.filter(inc => inc.id !== id));
+          displayMessage("Incident deleted.", 'info');
+        } else {
+          const data = await response.json();
+          displayMessage(`Failed to delete incident: ${data.error || response.statusText}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting incident:', error);
+        displayMessage('Error deleting incident: Network issue or server offline.', 'error');
       }
     }
-    // Clear form fields after add/update
-    setIncidentWhen('');
-    setIncidentPlace('');
-    setIncidentDrone('');
-    setIncidentReason('');
-    setIncidentRegion('');
-    setIncidentIssue('');
-    setNewIncident({ type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: '' }); // Clear newIncident state too
-    setShowAddModal(false); // Close modal if it's open
-  } catch (error) {
-    console.error('Error processing incident:', error);
-    displayMessage('Error processing incident: Network issue or server offline.', 'error');
-  }
-};
+  };
 
-        if (editingIncidentId) {
-            // Update existing incident
-            setIncidents(incidents.map(incident =>
-                incident.id === editingIncidentId
-                    ? { ...incident, incidentWhen, incidentPlace, incidentDrone, incidentReason, incidentRegion, incidentIssue }
-                    : incident
-            ));
-            displayMessage("Incident updated successfully!", 'success');
-            setEditingIncidentId(null); // Exit editing mode
-        } else {
-            // Add new incident
-            const newIncident = {
-                id: Date.now(), // Unique ID
-                when: incidentWhen,
-                place: incidentPlace,
-                drone: incidentDrone,
-                reason: incidentReason,
-                region: incidentRegion,
-                issue: incidentIssue,
-            };
-            setIncidents([...incidents, newIncident]);
-            displayMessage("Incident reported successfully!", 'success');
-        }
-        // Clear form fields after add/update
-        setIncidentWhen('');
-        setIncidentPlace('');
-        setIncidentDrone('');
-        setIncidentReason('');
-        setIncidentRegion('');
-        setIncidentIssue('');
-    };
+  const getStatusColor = (type) => {
+    switch (type) {
+      case 'alert': return 'bg-red-100 text-red-800';
+      case 'warning': return 'bg-yellow-100 text-yellow-800';
+      case 'info': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
 
-    // Function to delete an incident
-    const handleDeleteIncident = (id) => {
-        if (window.confirm("Are you sure you want to delete this incident record?")) {
-            setIncidents(incidents.filter(incident => incident.id !== id));
-            displayMessage("Incident record deleted.", 'info');
-        }
-    };
+  return (
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Incidents Management</h2>
 
-    // Function to set up form for editing
-    const handleEditIncident = (incident) => {
-        setIncidentWhen(incident.when);
-        setIncidentPlace(incident.place);
-        setIncidentDrone(incident.drone);
-        setIncidentReason(incident.reason);
-        setIncidentRegion(incident.region);
-        setIncidentIssue(incident.issue);
-        setEditingIncidentId(incident.id); // Enter editing mode
-        displayMessage("Edit the details and click 'Update Incident'.", 'info');
-    };
+      <div className="mb-6 flex justify-end">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+        >
+          <PlusCircle className="w-5 h-5 mr-2" /> Report New Incident
+        </button>
+      </div>
 
-    return (
-        <section className="bg-gray-50 rounded-xl p-6 shadow-md border border-gray-200 mt-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-700 border-b-2 border-blue-300 pb-3 mb-6">
-                Manage Incidents
-            </h2>
+      {showAddModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">Report New Incident</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="incidentType" className="block text-sm font-medium text-gray-700">Incident Type</label>
+                <select
+                  id="incidentType"
+                  value={newIncident.type}
+                  onChange={(e) => setNewIncident({ ...newIncident, type: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                >
+                  <option value="alert">Alert</option>
+                  <option value="warning">Warning</option>
+                  <option value="info">Info</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="incidentMessage" className="block text-sm font-medium text-gray-700">Message</label>
+                <textarea
+                  id="incidentMessage"
+                  value={newIncident.message}
+                  onChange={(e) => setNewIncident({ ...newIncident, message: e.target.value })}
+                  rows="3"
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                ></textarea>
+              </div>
+              <div>
+                <label htmlFor="incidentTimestamp" className="block text-sm font-medium text-gray-700">Timestamp</label>
+                <input
+                  type="datetime-local"
+                  id="incidentTimestamp"
+                  value={newIncident.timestamp}
+                  onChange={(e) => setNewIncident({ ...newIncident, timestamp: e.target.value })}
+                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddOrUpdateIncident}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Report Incident
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Report/Edit Incident Form */}
-            <div className="mb-8 p-6 bg-white rounded-lg shadow-inner">
-                <h3 className="text-xl font-semibold text-gray-600 mb-4">
-                    {editingIncidentId ? 'Edit Incident Details' : 'Report New Incident'}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                        type="datetime-local"
-                        value={incidentWhen}
-                        onChange={(e) => setIncidentWhen(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="text"
-                        placeholder="Place of Incident"
-                        value={incidentPlace}
-                        onChange={(e) => setIncidentPlace(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="text"
-                        placeholder="Affected Drone ID"
-                        value={incidentDrone}
-                        onChange={(e) => setIncidentDrone(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="text"
-                        placeholder="Incident Reason"
-                        value={incidentReason}
-                        onChange={(e) => setIncidentReason(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="text"
-                        placeholder="Region"
-                        value={incidentRegion}
-                        onChange={(e) => setIncidentRegion(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
-                    <input
-                        type="text"
-                        placeholder="Specific Issue"
-                        value={incidentIssue}
-                        onChange={(e) => setIncidentIssue(e.target.value)}
-                        className="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
-                        required
-                    />
+      {incidents.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No incidents found. Report a new incident to get started!</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {incidents.map(incident => (
+            <div key={incident.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">{incident.message}</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(incident.type)}`}>
+                  {incident.type.charAt(0).toUpperCase() + incident.type.slice(1)}
+                </span>
+              </div>
+              <p className="text-gray-600 text-sm mb-4 flex-grow">
+                Timestamp: {incident.timestamp ? new Date(incident.timestamp).toLocaleString() : 'N/A'}
+              </p>
+
+              <div className="flex justify-between items-center text-sm mt-auto">
+                <span className={`font-medium ${incident.resolved ? 'text-green-600' : 'text-orange-600'}`}>
+                  Status: {incident.resolved ? 'Resolved' : 'Unresolved'}
+                </span>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleToggleResolve(incident.id, incident.resolved)}
+                    className={`p-2 rounded-full ${incident.resolved ? 'text-orange-500 hover:bg-orange-100' : 'text-green-500 hover:bg-green-100'} transition-colors`}
+                    title={incident.resolved ? "Mark as Unresolved" : "Mark as Resolved"}
+                  >
+                    {incident.resolved ? <XCircle className="w-5 h-5" /> : <Check className="w-5 h-5" />}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteIncident(incident.id)}
+                    className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors"
+                    title="Delete Incident"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
                 </div>
-               
+              </div>
             </div>
-
-            {/* Recorded Incidents List */}
-            <div className="p-6 bg-white rounded-lg shadow-inner">
-                <h3 className="text-xl font-semibold text-gray-600 mb-4">Recorded Incidents</h3>
-                {incidents.length === 0 ? (
-                    <p className="text-center text-gray-500 italic p-4 bg-blue-50 rounded-lg">No incidents recorded.</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
-                            <thead className="bg-gray-200">
-                                <tr>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">When</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Place</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Drone ID</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Reason</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Region</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Issue</th>
-                                    <th className="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {incidents.map((incident) => (
-                                    <tr key={incident.id} className="hover:bg-gray-50">
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{new Date(incident.when).toLocaleString()}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{incident.place}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{incident.drone}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{incident.reason}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{incident.region}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-gray-800">{incident.issue}</td>
-                                        <td className="py-3 px-4 whitespace-nowrap text-sm font-medium">
-                                            <button
-                                                onClick={() => handleEditIncident(incident)}
-                                                className="text-indigo-600 hover:text-indigo-900 mr-3 p-2 rounded-md hover:bg-gray-200 transition duration-200"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteIncident(incident.id)}
-                                                className="text-red-600 hover:text-red-900 p-2 rounded-md hover:bg-gray-200 transition duration-200"
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-        </section>
-    );
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 
-// --- Main App Component (Main Export) ---
 // --- Main App Component (Main Export) ---
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -3560,6 +3563,22 @@ const App = () => {
   const [notifications, setNotifications] = useState([]); // State for notifications
   const [message, setMessage] = useState(''); // State for toast messages
   const [messageType, setMessageType] = useState(''); // Type of toast message (info, success, error)
+  // State for data fetched from backend (these should be empty arrays initially)
+  const [drones, setDrones] = useState([]);
+  const [missions, setMissions] = useState([]);
+  const [mediaItems, setMediaItems] = useState([]);
+  const [maintenanceParts, setMaintenanceParts] = useState([]);
+  const [incidents, setIncidents] = useState([]);
+
+// User profile state
+const [userProfile, setUserProfile] = useState({
+  name: 'M Osman',
+  email: 'm.osman@example.com',
+  profilePicture: 'https://placehold.co/150x150/a78bfa/ffffff?text=Profile', // Placeholder image
+  totalFlights: 150,
+  totalFlightTime: '250h 30m',
+  averageFlightTime: '1h 40m',
+});
 
   const navigate = useNavigate();
 
@@ -3576,174 +3595,60 @@ const App = () => {
   // Initialize Socket.IO connection
   const socket = useRef(null);
 
-    // Inside the useEffect for Socket.IO connection
-useEffect(() => {
-    // ... (existing code for isAuthenticated and socket.current check)
+  useEffect(() => {
+    // Only connect if authenticated and socket not already connected
+    if (isAuthenticated && !socket.current) {
+      const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
+      const newSocket = io(FLASK_BACKEND_WS_URL);
+      socket.current = newSocket; // Assign to ref
 
-    const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // Ensure this is correct
-    const newSocket = io(FLASK_BACKEND_WS_URL);
-    socket.current = newSocket; // Assign to ref
-
-    newSocket.on('connect', () => {
+      newSocket.on('connect', () => {
         console.log('Connected to Flask Socket.IO backend!');
         displayMessage('Connected to real-time backend!', 'success');
         newSocket.emit('register_as_frontend'); // Register this client as a frontend
-    });
+      });
 
-    newSocket.on('disconnect', () => {
+      newSocket.on('disconnect', () => {
         console.log('Disconnected from Flask Socket.IO backend.');
         displayMessage('Disconnected from real-time backend.', 'error');
-    });
+      });
 
-    // --- IMPORTANT: Ensure these event names match your Flask backend! ---
-    // Update for drone telemetry
-    newSocket.on('drone_telemetry_update', (data) => {
-        // console.log('Received telemetry update:', data); // Uncomment for debugging
+      newSocket.on('drone_telemetry_update', (data) => { // Changed from 'telemetry_data' to 'drone_telemetry_update' to match backend
         setLiveTelemetry(prev => ({
-            ...prev,
-            [data.drone_id]: data.telemetry
+          ...prev,
+          [data.drone_id]: data.telemetry
         }));
-    });
+      });
 
-    // Update for new notifications
-    newSocket.on('new_notification', (data) => {
-        console.log('New notification received:', data);
+      newSocket.on('new_notification', (data) => { // Changed from 'notification' to 'new_notification' to match backend
+        console.log('New notification:', data);
         const newNotification = {
-            id: data.id, // Use ID from backend if provided, otherwise generate
-            message: data.message,
-            type: data.type || 'info', // 'info', 'alert', 'success'
-            read: data.read || false, // Default to unread
-            timestamp: new Date(data.timestamp), // Parse timestamp to Date object
+          id: data.id, // Use ID from backend if provided, otherwise generate
+          message: data.message,
+          type: data.type || 'info', // 'info', 'alert', 'success'
+          read: data.read || false, // Default to unread
+          timestamp: new Date(data.timestamp), // Parse timestamp to Date object
         };
         setNotifications(prev => [newNotification, ...prev]); // Add new notification to the top
-        displayMessage(data.message, newNotification.type); // Show toast
-    });
+        displayMessage(newNotification.message, newNotification.type); // Show toast
+      });
 
-    // Listener for when a notification is updated (e.g., marked as read)
-    newSocket.on('notification_updated', (updatedNotification) => {
-        setNotifications(prev => prev.map(n =>
-            n.id === updatedNotification.id ? { ...n, ...updatedNotification, timestamp: new Date(updatedNotification.timestamp) } : n
-        ));
-    });
+      newSocket.on('command_status_report', (data) => { // Changed from 'drone_command_response' to 'command_status_report' to match backend
+        displayMessage(`Command for ${data.drone_id}: ${data.status} - ${data.message}`, data.status === 'success' ? 'success' : 'error');
+      });
+    }
 
-    // Listener for when a notification is deleted
-    newSocket.on('notification_deleted', (deletedNotificationId) => {
-        setNotifications(prev => prev.filter(n => n.id !== deletedNotificationId));
-    });
-
-    // Listener for new media available (if your gateway sends this)
-    newSocket.on('new_media_available', (mediaData) => {
-        console.log('New media available:', mediaData);
-        setMediaItems(prev => [
-            { ...mediaData, date: new Date(mediaData.date) }, // Ensure Date object
-            ...prev
-        ]);
-        displayMessage(`New media captured by ${mediaData.droneId}: ${mediaData.title}`, 'info');
-    });
-
-    // ... (rest of the useEffect cleanup function)
+    // Clean up on unmount or when isAuthenticated changes
     return () => {
-        if (socket.current) {
-            socket.current.disconnect();
-            socket.current = null;
-        }
+      if (socket.current) {
+        socket.current.disconnect();
+        socket.current = null;
+      }
     };
-}, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
-
-// Inside the App component, after the Socket.IO useEffect
-// Initial Data Fetching from Flask REST APIs
-useEffect(() => {
-    const fetchAllInitialData = async () => {
-        if (!isAuthenticated) return; // Only fetch if authenticated
-
-        try {
-            const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // Ensure this is correct
-
-            const endpoints = {
-                drones: `${FLASK_BACKEND_REST_URL}/api/drones`,
-                missions: `${FLASK_BACKEND_REST_URL}/api/missions`,
-                media: `${FLASK_BACKEND_REST_URL}/api/media`,
-                maintenanceParts: `${FLASK_BACKEND_REST_URL}/api/maintenance_parts`,
-                incidents: `${FLASK_BACKEND_REST_URL}/api/incidents`,
-                notifications: `${FLASK_BACKEND_REST_URL}/api/notifications`, // Fetch initial notifications via REST too
-            };
-
-            const fetchPromises = Object.entries(endpoints).map(async ([key, url]) => {
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status} from ${url}`);
-                    }
-                    const data = await response.json();
-                    return { key, data };
-                } catch (error) {
-                    console.error(`Error fetching ${key} from ${url}:`, error);
-                    displayMessage(`Failed to load ${key}.`, 'error');
-                    return { key, data: [] }; // Return empty array on error to prevent breaking
-                }
-            });
-
-            const results = await Promise.all(fetchPromises);
-
-            results.forEach(({ key, data }) => {
-                switch (key) {
-                    case 'drones':
-                        setDrones(data.map(d => ({
-                            ...d,
-                            lastFlight: d.last_flight ? new Date(d.last_flight) : null,
-                            // Add other date parsing if necessary for other drone fields
-                        })));
-                        break;
-                    case 'missions':
-                        setMissions(data.map(m => ({
-                            ...m,
-                            startTime: m.start_time ? new Date(m.start_time) : null, // Assuming backend sends start_time
-                            endTime: m.end_time ? new Date(m.end_time) : null,       // Assuming backend sends end_time
-                            // Parse other dates if they exist in mission data
-                        })));
-                        break;
-                    case 'media':
-                        setMediaItems(data.map(m => ({
-                            ...m,
-                            date: m.date ? new Date(m.date) : null, // Assuming backend sends 'date' for media
-                            // Parse other dates if they exist in media data
-                        })));
-                        break;
-                    case 'maintenanceParts':
-                        setMaintenanceParts(data.map(p => ({
-                            ...p,
-                            lastMaintenance: p.last_maintenance ? new Date(p.last_maintenance) : null, // Assuming backend sends last_maintenance
-                            nextMaintenance: p.next_maintenance ? new Date(p.next_maintenance) : null, // Assuming backend sends next_maintenance
-                        })));
-                        break;
-                    case 'incidents':
-                        setIncidents(data.map(i => ({
-                            ...i,
-                            timestamp: i.timestamp ? new Date(i.timestamp) : null, // Assuming backend sends timestamp
-                        })));
-                        break;
-                    case 'notifications':
-                        setNotifications(data.map(n => ({
-                            ...n,
-                            timestamp: n.timestamp ? new Date(n.timestamp) : null, // Assuming backend sends timestamp
-                        })));
-                        break;
-                    default:
-                        break;
-                }
-            });
-
-        } catch (error) {
-            console.error('Error fetching all initial data:', error);
-            displayMessage('Failed to load some application data.', 'error');
-        }
-    };
-
-    fetchAllInitialData();
-}, [isAuthenticated, displayMessage]); // Re-fetch when authentication status changes 
+  }, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
 
   // Function to send drone commands via REST API (as backend expects REST for commands)
-  const sendDroneCommand = async (droneId, command, params = {}) => {
+  const sendDroneCommand = useCallback(async (droneId, command, params = {}) => {
     if (socket.current && socket.current.connected) {
       try {
         const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
@@ -3761,7 +3666,7 @@ useEffect(() => {
     } else {
       displayMessage('Not connected to backend WebSocket. Command not sent.', 'error');
     }
-  };
+  }, [displayMessage]);
 
 
   const handleLoginSuccess = () => {
@@ -3770,100 +3675,96 @@ useEffect(() => {
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    navigate('/auth'); // Redirect to login page
+    if (auth) {
+      auth.signOut().then(() => {
+        setIsAuthenticated(false);
+        navigate('/auth');
+        displayMessage("Logged out successfully.", 'info');
+      }).catch((error) => {
+        console.error("Error signing out:", error);
+        displayMessage(`Logout error: ${error.message}`, 'error');
+      });
+    } else {
+      setIsAuthenticated(false); // For anonymous or uninitialized auth
+      navigate('/auth');
+      displayMessage("Logged out (no Firebase auth).", 'info');
+    }
   };
 
-  // Placeholder data for other components (now part of App state)
-  const [mediaItems, setMediaItems] = useState([]); // Initialize as an empty array
-    // Inside the Media component (handleUploadMedia function)
-const handleUploadMedia = async (newMediaData) => {
-    try {
-        const response = await fetch('http://localhost:5000/api/media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: newMediaData.title,
-                type: newMediaData.type,
-                url: newMediaData.url,
-                thumbnail: newMediaData.thumbnail,
-                drone_id: newMediaData.droneId, // Ensure this matches backend field name
-                mission_id: newMediaData.missionId, // Ensure this matches backend field name
-                timestamp: new Date().toISOString(), // Use current timestamp for upload
-                gps: newMediaData.gps,
-                tags: newMediaData.tags,
-                description: newMediaData.description,
-            }),
+  // Initial Data Fetching from Flask REST APIs
+  useEffect(() => {
+    const fetchAllInitialData = async () => {
+      if (!isAuthenticated) return; // Only fetch if authenticated
+
+      try {
+        const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // Ensure this is correct
+
+        const endpoints = {
+          drones: `${FLASK_BACKEND_REST_URL}/api/drones`,
+          missions: `${FLASK_BACKEND_REST_URL}/api/missions`,
+          media: `${FLASK_BACKEND_REST_URL}/api/media`,
+          maintenanceParts: `${FLASK_BACKEND_REST_URL}/api/maintenance_parts`,
+          incidents: `${FLASK_BACKEND_REST_URL}/api/incidents`,
+          notifications: `${FLASK_BACKEND_REST_URL}/api/notifications`, // Fetch initial notifications via REST too
+        };
+
+        const fetchPromises = Object.entries(endpoints).map(async ([key, url]) => {
+          try {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status} from ${url}`);
+            }
+            const data = await response.json();
+            return { key, data };
+          } catch (error) {
+            console.error(`Error fetching ${key} from ${url}:`, error);
+            displayMessage(`Failed to load ${key}.`, 'error');
+            return { key, data: [] }; // Return empty array on error
+          }
         });
-        const data = await response.json();
-        if (response.ok) {
-            setMediaItems(prevItems => [...prevItems, {
-                ...data,
-                date: data.timestamp ? new Date(data.timestamp) : null, // Use timestamp from backend for 'date'
-            }]);
-            displayMessage("Media uploaded successfully!", 'success');
-            setCurrentView('list'); // Go back to list view
-        } else {
-            displayMessage(`Failed to upload media: ${data.error || response.statusText}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error uploading media:', error);
-        displayMessage('Error uploading media: Network issue or server offline.', 'error');
-    }
-};  
-  const [incidents, setIncidents] = useState([]); // Initialize as an empty array
 
-  const [maintenanceParts, setMaintenanceParts] = useState([
-    { id: 'p1', name: 'Propeller Set A', status: 'Available', lastMaintenance: '2025-06-01', nextMaintenance: '2025-08-01' },
-    { id: 'p2', name: 'Flight Controller v2', status: 'In Repair', lastMaintenance: '2025-07-10', nextMaintenance: 'N/A' },
-  ]);
+        const results = await Promise.all(fetchPromises);
 
-  // Dummy user data for ProfileSettings
-  const [userProfile, setUserProfile] = useState({
-    name: 'M Osman',
-    email: 'm.osman@example.com',
-    profilePicture: 'https://placehold.co/150x150/a78bfa/ffffff?text=Profile', // Placeholder image
-    totalFlights: 150,
-    totalFlightTime: '250h 30m',
-    averageFlightTime: '1h 40m',
-  });
+        results.forEach(({ key, data }) => {
+          if (key === 'drones') setDrones(data.map(d => ({
+            ...d,
+            lastFlight: d.last_flight ? new Date(d.last_flight) : null,
+            // Add other date parsing if necessary
+          })));
+          else if (key === 'missions') setMissions(data.map(m => ({
+            ...m,
+            startTime: m.start_time ? new Date(m.start_time) : null,
+            endTime: m.end_time ? new Date(m.end_time) : null,
+          })));
+          else if (key === 'media') setMediaItems(data.map(m => ({
+            ...m,
+            date: m.timestamp ? new Date(m.timestamp) : null, // Use timestamp from backend for 'date'
+          })));
+          else if (key === 'maintenanceParts') setMaintenanceParts(data.map(p => ({
+            ...p,
+            lastMaintenance: p.last_maintenance ? new Date(p.last_maintenance) : null,
+            nextMaintenance: p.next_maintenance ? new Date(p.next_maintenance) : null,
+          })));
+          else if (key === 'incidents') setIncidents(data.map(i => ({
+            ...i,
+            timestamp: i.timestamp ? new Date(i.timestamp) : null,
+            when: i.when ? new Date(i.when) : null, 
+          })));
+          else if (key === 'notifications') setNotifications(data.map(n => ({
+            ...n,
+            timestamp: n.timestamp ? new Date(n.timestamp) : null,
+          })));
+        });
 
-  // Effects to load data from localStorage on initial render
-  useEffect(() => {
-    const storedMaintenanceParts = localStorage.getItem('maintenanceParts');
-    if (storedMaintenanceParts) {
-      setMaintenanceParts(JSON.parse(storedMaintenanceParts));
-    }
-    const storedIncidents = localStorage.getItem('incidents');
-    if (storedIncidents) {
-      setIncidents(JSON.parse(storedIncidents));
-    }
-    const storedUserProfile = localStorage.getItem('userProfile');
-    if (storedUserProfile) {
-      setUserProfile(JSON.parse(storedUserProfile));
-    }
-    const storedNotifications = localStorage.getItem('notifications');
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
-    }
-  }, []);
+      } catch (error) {
+        console.error('Error fetching all initial data:', error);
+        displayMessage('Failed to load some application data.', 'error');
+      }
+    };
 
-  // Effects to save data to localStorage whenever state changes
-  useEffect(() => {
-    localStorage.setItem('maintenanceParts', JSON.stringify(maintenanceParts));
-  }, [maintenanceParts]);
+    fetchAllInitialData();
+  }, [isAuthenticated, displayMessage]); // Re-fetch when authentication status changes
 
-  useEffect(() => {
-    localStorage.setItem('incidents', JSON.stringify(incidents));
-  }, [incidents]);
-
-  useEffect(() => {
-    localStorage.setItem('userProfile', JSON.stringify(userProfile));
-  }, [userProfile]);
-
-  useEffect(() => {
-    localStorage.setItem('notifications', JSON.stringify(notifications));
-  }, [notifications]);
 
   const handleCaptureMedia = (newMedia) => {
     setMediaItems(prevItems => [...prevItems, { id: `m${prevItems.length + 1}`, ...newMedia }]);
@@ -3880,7 +3781,7 @@ const handleUploadMedia = async (newMediaData) => {
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header */}
               <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
-                <h1 className="text-xl font-semibold text-gray-800">Drone Operations Dashboard</h1>
+                <h1 className="text-2xl font-semibold text-gray-800">Drone Operations Dashboard</h1>
                 <div className="flex items-center space-x-4">
                   {message && (
                     <div className={`px-4 py-2 rounded-md text-white text-sm font-medium ${
@@ -3899,35 +3800,36 @@ const handleUploadMedia = async (newMediaData) => {
                       </span>
                     )}
                   </Link>
-                  <button className="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
-                    <img className="h-8 w-8 rounded-full" src="https://placehold.co/40x40/cccccc/ffffff?text=U" alt="User avatar" />
-                    <span className="font-medium text-sm">m osman</span>
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
+<button className="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
+  <img src={userProfile.profilePicture} alt="User avatar" className="h-8 w-8 rounded-full" /> {/* CHANGE 'user' to 'userProfile' */}
+  <span className="font-medium text-sm">{userProfile.name}</span> {/* CHANGE 'm osman' to '{userProfile.name}' */}
+  <ChevronDown className="h-4 w-4" />
+</button>
                 </div>
               </header>
 
               {/* Main Content Area */}
               <main className="flex-1 p-6 bg-gray-100 overflow-y-auto">
                 <Routes>
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<Dashboard drones={drones} missions={missions} incidents={incidents} mediaItems={mediaItems} maintenanceParts={maintenanceParts} />} />
                   <Route path="/live-operations" element={<LiveOperations
-                    onCaptureMedia={handleCaptureMedia}
+                    drones={drones} // Pass drones prop
                     liveTelemetry={liveTelemetry}
                     sendDroneCommand={sendDroneCommand}
                     displayMessage={displayMessage}
                   />} />
-                  <Route path="/missions" element={<Missions />} />
+                  <Route path="/missions" element={<Missions missions={missions} setMissions={setMissions} displayMessage={displayMessage} />} />
 
                   {/* Assets Routes */}
-                  <Route path="/assets" element={<Drones />} />
-                  <Route path="/assets/drones" element={<Drones />} />
+                  <Route path="/assets" element={<Drones drones={drones} setDrones={setDrones} displayMessage={displayMessage} />} /> {/* Pass drones prop */}
+                  <Route path="/assets/drones" element={<Drones drones={drones} setDrones={setDrones} displayMessage={displayMessage} />} />
                   <Route path="/assets/ground-stations" element={<GroundStations />} />
                   <Route path="/assets/equipment" element={<Equipment />} />
                   <Route path="/assets/batteries" element={<Batteries />} />
 
                   {/* Library Routes */}
-                  <Route path="/library/media" element={<Media mediaItems={mediaItems} setMediaItems={setMediaItems} />} />
+                  <Route path="/library/media" element={<Media mediaItems={mediaItems} setMediaItems={setMediaItems} displayMessage={displayMessage} />} />
+                  
                   <Route path="/library/files" element={<Files />} />
                   <Route path="/library/checklists" element={<Checklists />} />
                   <Route path="/library/tags" element={<Tags />} />
@@ -3951,6 +3853,3 @@ const handleUploadMedia = async (newMediaData) => {
 };
 
 export default App;
-
-
-
