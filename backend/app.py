@@ -28,9 +28,6 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}}) # Apply CORS to /api routes
 CORS(app) # Apply CORS to all other routes (including Socket.IO)
 
-# --- Flask-SQLAlchemy Configuration ---
-# DATABASE_URL should be set in your .env file
-# Example: 'postgresql://usman:1234@localhost:5432/drone_project'
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://your_username:your_password@localhost:5432/your_database_name')
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False # Disable tracking modifications for performance
@@ -429,7 +426,7 @@ def add_drone():
             status=data.get('status', 'Offline'),
             battery=data.get('battery', 0),
             location=data.get('location', 'Unknown'),
-            # Ensure last_flight is parsed correctly if it's a string from frontend
+
             last_flight=datetime.fromisoformat(data['last_flight'].replace('Z', '+00:00')) if data.get('last_flight') else None,
             flight_hours=data.get('flight_hours', 0.0)
         )

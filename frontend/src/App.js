@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -11,23 +12,28 @@ import {
   Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square
 } from 'lucide-react';
 import { io } from 'socket.io-client';
+// --- API CONFIG & HELPER ---
+const API_BASE_URL = 'http://localhost:5000';
+const WEBSOCKET_URL = 'http://localhost:5000';
 
-// Firebase Imports (for authentication, not Firestore in this SQL version)
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+const apiRequest = async (endpoint, method = 'GET', body = null) => {
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) options.body = JSON.stringify(body);
 
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown API error' }));
+        throw new Error(errorData.error || `HTTP error: ${response.status}`);
+    }
+    if (response.status === 204) return null; // Handle No Content responses
+    return response.json();
+};
 // Import the authentication page component.
 import AuthPage from './pages/auth/AuthPage';
 
-// --- Global Firebase Config & App ID (Provided by Canvas Environment, or default for local dev) ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Initialize Firebase App
-// Check if firebaseConfig is not empty before initializing
-const firebaseApp = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
-const auth = firebaseApp ? getAuth(firebaseApp) : null;
+
+
 
 
 // --- INLINED Sidebar Component ---
@@ -194,12 +200,16 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
   const activeMissions = missions.filter(m => m.status === 'Active').length;
   const pendingMaintenance = maintenanceParts.filter(p => p.status !== 'Available').length;
   const recentIncidents = incidents.filter(i => !i.resolved).length;
-  const mediaToday = mediaItems.filter(m => {
-    const today = new Date();
-    return m.date && m.date.getDate() === today.getDate() &&
-           m.date.getMonth() === today.getMonth() &&
-           m.date.getFullYear() === today.getFullYear();
-  }).length;
+// Inside the Dashboard component
+const mediaToday = mediaItems.filter(m => {
+  if (!m.date) return false; // Skip items with no date
+  const today = new Date();
+  const mediaDate = new Date(m.date); // <-- THIS IS THE FIX
+
+  return mediaDate.getDate() === today.getDate() &&
+         mediaDate.getMonth() === today.getMonth() &&
+         mediaDate.getFullYear() === today.getFullYear();
+}).length;
 
   // Placeholder for actual flight hours calculation
   const totalFlightHours = drones.reduce((sum, drone) => sum + (drone.flightHours || 0), 0).toFixed(1);
@@ -275,331 +285,104 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
 };
 
 // --- INLINED LiveOperations Component ---
-const LiveOperations = ({ drones, liveTelemetry, sendDroneCommand, displayMessage }) => {
-  const [selectedDrone, setSelectedDrone] = useState(drones.length > 0 ? drones[0].id : ''); // Default to first drone ID if available
+// --- INLINED LiveOperations Component ---
 
-  useEffect(() => {
-    if (drones.length > 0 && !selectedDrone) {
-      setSelectedDrone(drones[0].id); // Set default if drones load after component
-    }
-  }, [drones, selectedDrone]);
 
-  const currentTelemetry = liveTelemetry[selectedDrone] || {
-    altitude: 0,
-    speed: 0,
-    battery_percent: 0,
-    signal: 'No Signal',
-    flight_mode: 'N/A',
-    latitude: 0,
-    longitude: 0,
-    heading: 'N/A'
-  };
 
-  const currentDrone = drones.find(d => d.id === selectedDrone);
+const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newMission, setNewMission] = useState({
+        name: '',
+        drone_id: '', // <-- FIX: Changed from 'drone' to 'drone_id'
+        start_time: '',
+        end_time: '',
+        details: ''
+    });
 
-  const handleTakePhoto = () => {
-    if (sendDroneCommand && selectedDrone) {
-      sendDroneCommand(selectedDrone, 'take_photo');
-    } else {
-      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
-    }
-  };
-
-  const handleRecordVideo = () => {
-    if (sendDroneCommand && selectedDrone) {
-      sendDroneCommand(selectedDrone, 'record_video_start');
-    } else {
-      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
-    }
-  };
-
-  const handleStopRecordVideo = () => {
-    if (sendDroneCommand && selectedDrone) {
-      sendDroneCommand(selectedDrone, 'record_video_stop');
-    } else {
-      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
-    }
-  };
-
-  const handleTakeoff = () => {
-    if (sendDroneCommand && selectedDrone) {
-      sendDroneCommand(selectedDrone, 'takeoff', { altitude: 10 });
-    } else {
-      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
-    }
-  };
-
-  const handleLand = () => {
-    if (sendDroneCommand && selectedDrone) {
-      sendDroneCommand(selectedDrone, 'land');
-    } else {
-      displayMessage("Please select a drone and ensure backend connection is ready.", 'error');
-    }
-  };
-
-  return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
-
-      {/* Drone Selection and Controls */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-lg shadow-sm">
-        <div className="flex items-center space-x-3">
-          <label htmlFor="drone-select" className="text-gray-700 font-medium">Select Drone:</label>
-          <select
-            id="drone-select"
-            value={selectedDrone}
-            onChange={(e) => setSelectedDrone(e.target.value)}
-            className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {drones.map(drone => (
-              <option key={drone.id} value={drone.id}>{drone.name} ({drone.id})</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex space-x-2">
-          <button onClick={handleTakeoff} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors shadow-md">
-            <Rocket className="w-5 h-5 mr-2" /> Takeoff
-          </button>
-          <button onClick={handleLand} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors shadow-md">
-            <Home className="w-5 h-5 mr-2" /> Land
-          </button>
-          <button onClick={handleTakePhoto} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors shadow-md">
-            <Camera className="w-5 h-5 mr-2" /> Take Photo
-          </button>
-          <button onClick={handleRecordVideo} className="flex items-center px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors shadow-md">
-            <VideoIcon className="w-5 h-5 mr-2" /> Record Video
-          </button>
-          <button onClick={handleStopRecordVideo} className="flex items-center px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors shadow-md">
-            <XCircle className="w-5 h-5 mr-2" /> Stop Recording
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Grid: Video Feed, Map, Telemetry */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        {/* Main Video Feed */}
-        <div className="lg:col-span-2 bg-gray-900 rounded-xl shadow-md overflow-hidden relative">
-          {currentDrone ? (
-            <img src={'https://placehold.co/600x400/3498db/ffffff?text=Simulated+Drone+Feed'} alt={`${currentDrone.name} Live Feed`} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xl">
-              No drone selected or feed unavailable.
-            </div>
-          )}
-          {/* Telemetry Overlay (optional, can be moved to a separate panel) */}
-          <div className="absolute bottom-4 left-4 bg-black bg-opacity-60 text-white p-3 rounded-lg text-sm space-y-1">
-            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Alt: {currentTelemetry.altitude}m</p>
-            <p className="flex items-center"><Gauge className="w-4 h-4 mr-2" /> Speed: {currentTelemetry.speed} m/s</p>
-            <p className="flex items-center"><Battery className="w-4 h-4 mr-2" /> Bat: {currentTelemetry.battery_percent}%</p>
-            <p className="flex items-center"><Signal className="w-4 h-4 mr-2" /> Signal: {currentTelemetry.signal}</p>
-          </div>
-        </div>
-
-        {/* Right Panel: Map and Detailed Telemetry */}
-        <div className="lg:col-span-1 flex flex-col space-y-6">
-          {/* Interactive Map Placeholder */}
-          <div className="bg-white rounded-xl shadow-md p-4 flex-1 flex flex-col items-center justify-center text-gray-600">
-            <MapPin className="w-16 h-16 text-blue-400 mb-3" />
-            <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
-            <p className="text-center text-sm">Drone location and flight path will be displayed here.</p>
-            <p className="text-xs text-gray-500 mt-2">Current GPS: Lat {currentTelemetry.latitude}, Lng {currentTelemetry.longitude}</p>
-            <p className="text-xs text-gray-500">Heading: {currentTelemetry.heading}</p>
-            <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium text-sm">View Full Map</button>
-          </div>
-
-          {/* Detailed Telemetry Panel */}
-          <div className="bg-white rounded-xl shadow-md p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Detailed Telemetry ({selectedDrone})</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
-              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-blue-500" /> Altitude: <span className="font-medium ml-1">{currentTelemetry.altitude}m</span></p>
-              <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-green-500" /> Speed: <span className="font-medium ml-1">{currentTelemetry.speed} m/s</span></p>
-              <p className="flex items-center"><Battery className="w-4 h-4 mr-2 text-red-500" /> Battery: <span className="font-medium ml-1">{currentTelemetry.battery_percent}%</span></p>
-              <p className="flex items-center"><Signal className="w-4 h-4 mr-2 text-purple-500" /> Signal: <span className="font-medium ml-1">{currentTelemetry.signal}</span></p>
-              <p className="flex items-center col-span-2"><Compass className="w-4 h-4 mr-2 text-yellow-500" /> Flight Mode: <span className="font-medium ml-1">{currentTelemetry.flight_mode}</span></p>
-              <p className="flex items-center col-span-2"><MapPin className="w-4 h-4 mr-2 text-indigo-500" /> Lat/Lng: <span className="font-medium ml-1">{currentTelemetry.latitude}, {currentTelemetry.longitude}</span></p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Smaller Video Feeds / Multi-Drone View */}
-      <div className="mt-6">
-        <h3 className="text-xl font-semibold text-gray-800 mb-4">Other Active Drones</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {drones.filter(d => d.id !== selectedDrone).map(drone => (
-            <div key={drone.id} className="bg-gray-800 rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setSelectedDrone(drone.id)}>
-              <img src={'https://placehold.co/600x400/2ecc71/ffffff?text=Other+Drone+Feed'} alt={`${drone.name} Feed`} className="w-full h-32 object-cover" />
-              <div className="p-2 text-white text-sm font-medium">{drone.name}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- INLINED Missions Component ---
-const Missions = ({ missions, setMissions, displayMessage }) => {
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newMission, setNewMission] = useState({
-    id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '',
-    progress: 0, details: '', waypoints: 0, area: '', payload: ''
-  });
-
-  const handleAddMission = async () => {
-    if (!newMission.name || !newMission.drone || !newMission.startTime || !newMission.endTime) {
-      displayMessage("Please fill all required mission fields.", 'error');
-      return;
-    }
-    try {
-      const response = await fetch('http://localhost:5000/api/missions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newMission,
-          startTime: new Date(newMission.startTime).toISOString(), // Convert to ISO string
-          endTime: new Date(newMission.endTime).toISOString(),     // Convert to ISO string
-        }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setMissions(prev => [...prev, {
-          ...data,
-          startTime: data.startTime ? new Date(data.startTime) : null, // Convert back to Date object
-          endTime: data.endTime ? new Date(data.endTime) : null,     // Convert back to Date object
-        }]);
-        displayMessage("Mission added successfully!", 'success');
-        setShowAddModal(false);
-        setNewMission({ id: '', name: '', status: 'Scheduled', drone: '', startTime: '', endTime: '', progress: 0, details: '', waypoints: 0, area: '', payload: '' });
-      } else {
-        displayMessage(`Failed to add mission: ${data.error}`, 'error');
-      }
-    } catch (error) {
-      console.error('Error adding mission:', error);
-      displayMessage('Error adding mission.', 'error');
-    }
-  };
-
-  const handleDeleteMission = async (id) => {
-    if (window.confirm("Are you sure you want to delete this mission?")) {
-      try {
-        const response = await fetch(`http://localhost:5000/api/missions/${id}`, {
-          method: 'DELETE',
-        });
-        if (response.ok) {
-          setMissions(prev => prev.filter(mission => mission.id !== id));
-          displayMessage("Mission deleted.", 'info');
-        } else {
-          const data = await response.json();
-          displayMessage(`Failed to delete mission: ${data.error}`, 'error');
+    const onSave = async () => {
+        if (!newMission.name || !newMission.drone_id || !newMission.start_time || !newMission.end_time) {
+            displayMessage("Please fill all required mission fields.", 'error');
+            return;
         }
-      } catch (error) {
-        console.error('Error deleting mission:', error);
-        displayMessage('Error deleting mission.', 'error');
-      }
-    }
-  };
+        
+        const success = await handleAddMission({
+            ...newMission,
+            status: 'Scheduled',
+            progress: 0,
+        });
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Active': return 'bg-green-100 text-green-800';
-      case 'Scheduled': return 'bg-blue-100 text-blue-800';
-      case 'Completed': return 'bg-gray-100 text-gray-800';
-      case 'Cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+        if (success) {
+            setShowAddModal(false);
+            setNewMission({ name: '', drone_id: '', start_time: '', end_time: '', details: '' });
+        }
+    };
+    
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Active': return 'bg-green-100 text-green-800';
+            case 'Scheduled': return 'bg-blue-100 text-blue-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
 
-  return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">Missions Management</h2>
-
-      <div className="mb-6 flex justify-end">
-        <button onClick={() => setShowAddModal(true)} className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md">
-          <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
-        </button>
-      </div>
-
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">Create New Mission</h3>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="missionName" className="block text-sm font-medium text-gray-700">Mission Name</label>
-                <input type="text" id="missionName" value={newMission.name} onChange={(e) => setNewMission({ ...newMission, name: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-              </div>
-              <div>
-                <label htmlFor="missionDrone" className="block text-sm font-medium text-gray-700">Drone ID</label>
-                <input type="text" id="missionDrone" value={newMission.drone} onChange={(e) => setNewMission({ ...newMission, drone: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-              </div>
-              <div>
-                <label htmlFor="missionStartTime" className="block text-sm font-medium text-gray-700">Start Time</label>
-                <input type="datetime-local" id="missionStartTime" value={newMission.startTime} onChange={(e) => setNewMission({ ...newMission, startTime: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-              </div>
-              <div>
-                <label htmlFor="missionEndTime" className="block text-sm font-medium text-gray-700">End Time</label>
-                <input type="datetime-local" id="missionEndTime" value={newMission.endTime} onChange={(e) => setNewMission({ ...newMission, endTime: e.target.value })} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" required />
-              </div>
-              <div>
-                <label htmlFor="missionDetails" className="block text-sm font-medium text-gray-700">Details</label>
-                <textarea id="missionDetails" value={newMission.details} onChange={(e) => setNewMission({ ...newMission, details: e.target.value })} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"></textarea>
-              </div>
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
+                <button onClick={() => setShowAddModal(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
+                </button>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors">Cancel</button>
-              <button onClick={handleAddMission} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">Create Mission</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {missions.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
-          <p className="text-gray-500 text-lg">No missions found. Create a new mission to get started!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {missions.map(mission => (
-            <div key={mission.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">{mission.name}</h3>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(mission.status)}`}>
-                  {mission.status}
-                </span>
-              </div>
-              <p className="text-gray-600 text-sm mb-4 flex-grow">{mission.details}</p>
-
-              <div className="space-y-2 text-sm text-gray-700 mb-4">
-                <p className="flex items-center"><Drone className="w-4 h-4 mr-2 text-blue-500" /> Drone: <span className="font-medium ml-1">{mission.drone}</span></p>
-                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Start: <span className="font-medium ml-1">{new Date(mission.startTime).toLocaleString()}</span></p>
-                <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> End: <span className="font-medium ml-1">{new Date(mission.endTime).toLocaleString()}</span></p>
-                <p className="flex items-center"><Gauge className="w-4 h-4 mr-2 text-green-500" /> Progress: <span className="font-medium ml-1">{mission.progress}%</span></p>
-              </div>
-
-              {mission.status === 'Active' && (
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                  <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${mission.progress}%` }}></div>
+            {showAddModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Create New Mission</h3>
+                        <div className="space-y-4">
+                            <input type="text" placeholder="Mission Name" value={newMission.name} onChange={e => setNewMission({ ...newMission, name: e.target.value })} className="w-full p-2 border rounded" />
+                            <select value={newMission.drone_id} onChange={e => setNewMission({ ...newMission, drone_id: e.target.value })} className="w-full p-2 border rounded">
+                                <option value="">Select a Drone</option>
+                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.id})</option>)}
+                            </select>
+                            <div>
+                                <label className="text-sm">Start Time</label>
+                                <input type="datetime-local" value={newMission.start_time} onChange={e => setNewMission({ ...newMission, start_time: e.target.value })} className="w-full p-2 border rounded" />
+                            </div>
+                            <div>
+                                <label className="text-sm">End Time</label>
+                                <input type="datetime-local" value={newMission.end_time} onChange={e => setNewMission({ ...newMission, end_time: e.target.value })} className="w-full p-2 border rounded" />
+                            </div>
+                            <textarea placeholder="Details" value={newMission.details} onChange={e => setNewMission({ ...newMission, details: e.target.value })} className="w-full p-2 border rounded h-24"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-4 mt-6">
+                            <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+                            <button onClick={onSave} className="px-4 py-2 bg-blue-600 text-white rounded">Create Mission</button>
+                        </div>
+                    </div>
                 </div>
-              )}
-
-              <div className="flex justify-end space-x-2 mt-auto">
-                <button className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="View Details">
-                  <Eye className="w-5 h-5" />
-                </button>
-                <button className="p-2 rounded-full text-blue-500 hover:bg-blue-100 hover:text-blue-700 transition-colors" title="Edit Mission">
-                  <Edit className="w-5 h-5" />
-                </button>
-                <button onClick={() => handleDeleteMission(mission.id)} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete Mission">
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {missions.map(mission => (
+                    <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-lg font-semibold">{mission.name}</h3>
+                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>{mission.status}</span>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
+                        <div className="text-sm space-y-2">
+                            <p><strong>Drone:</strong> {mission.drone_id}</p>
+                            <p><strong>Start:</strong> {new Date(mission.start_time).toLocaleString()}</p>
+                            <p><strong>End:</strong> {new Date(mission.end_time).toLocaleString()}</p>
+                        </div>
+                        <div className="flex justify-end mt-4">
+                            <button onClick={() => handleDeleteMission(mission.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full"><Trash2 className="w-5 h-5"/></button>
+                        </div>
+                    </div>
+                ))}
             </div>
-          ))}
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 // --- INLINED ConfirmationModal Component ---
@@ -2688,7 +2471,105 @@ const Tags = () => {
     </div>
   );
 };
+function IncidentSection({ incidents, handleAddIncident, handleUpdateIncident, handleDeleteIncident, displayMessage }) {
+    const [showModal, setShowModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentIncident, setCurrentIncident] = useState({ id: null, type: 'alert', message: '', resolved: false });
 
+    const openAddModal = () => {
+        setIsEditing(false);
+        setCurrentIncident({ id: null, type: 'alert', message: '', resolved: false });
+        setShowModal(true);
+    };
+
+    const openEditModal = (incident) => {
+        setIsEditing(true);
+        setCurrentIncident(incident);
+        setShowModal(true);
+    };
+
+    const handleSave = () => {
+        if (!currentIncident.message || !currentIncident.type) {
+            displayMessage("Type and message are required.", 'error');
+            return;
+        }
+        if (isEditing) {
+            handleUpdateIncident(currentIncident.id, currentIncident);
+        } else {
+            handleAddIncident(currentIncident);
+        }
+        setShowModal(false);
+    };
+
+    const handleToggleResolve = (incident) => {
+        handleUpdateIncident(incident.id, { ...incident, resolved: !incident.resolved });
+    };
+
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Incidents Management</h2>
+                <button onClick={openAddModal} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    <PlusCircle className="w-5 h-5 mr-2" /> Report New Incident
+                </button>
+            </div>
+
+            {showModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">{isEditing ? 'Edit Incident' : 'Report New Incident'}</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Incident Type</label>
+                                <select value={currentIncident.type} onChange={e => setCurrentIncident({ ...currentIncident, type: e.target.value })} className="w-full p-2 border rounded mt-1">
+                                    <option value="alert">Alert</option>
+                                    <option value="warning">Warning</option>
+                                    <option value="info">Info</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Message</label>
+                                <textarea placeholder="Describe the incident..." value={currentIncident.message} onChange={e => setCurrentIncident({ ...currentIncident, message: e.target.value })} className="w-full p-2 border rounded mt-1 h-24"></textarea>
+                            </div>
+                            {isEditing && (
+                                <div className="flex items-center">
+                                    <input type="checkbox" id="resolved" checked={currentIncident.resolved} onChange={e => setCurrentIncident({ ...currentIncident, resolved: e.target.checked })} className="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                                    <label htmlFor="resolved" className="ml-2 block text-sm text-gray-900">Mark as Resolved</label>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-4 mt-6">
+                            <button onClick={() => setShowModal(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+                            <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded">{isEditing ? 'Save Changes' : 'Report Incident'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-4">
+                {incidents.map(incident => (
+                    <div key={incident.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+                        <div>
+                            <p className={`font-bold ${incident.type === 'alert' ? 'text-red-600' : 'text-yellow-600'}`}>{incident.type.toUpperCase()}</p>
+                            <p className="text-gray-800">{incident.message}</p>
+                            <p className="text-sm text-gray-500 mt-1">{new Date(incident.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${incident.resolved ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {incident.resolved ? 'Resolved' : 'Unresolved'}
+                            </span>
+                            <button onClick={() => handleToggleResolve(incident)} className="p-1" title={incident.resolved ? "Mark Unresolved" : "Mark Resolved"}>
+                                {incident.resolved ? <XCircle className="w-5 h-5 text-orange-500" /> : <Check className="w-5 h-5 text-green-500" />}
+                            </button>
+                            <button onClick={() => openEditModal(incident)} className="text-blue-600 p-1"><Edit className="w-5 h-5" /></button>
+                            <button onClick={() => handleDeleteIncident(incident.id)} className="text-red-600 p-1"><Trash2 className="w-5 h-5" /></button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 // --- ProfileSettings Component (full implementation) ---
 const ProfileSettings = ({ user, setUser, displayMessage }) => {
   const [newName, setNewName] = useState(user.name);
@@ -3321,535 +3202,302 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
 }
 
 // Incident Section Component (from previous response, now integrated)
-function IncidentSection({ incidents, setIncidents, displayMessage }) {
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newIncident, setNewIncident] = useState({
-    type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: ''
-  });
-    
-  const handleAddOrUpdateIncident = async () => {
-    if (!newIncident.message.trim() || !newIncident.when || !newIncident.incidentPlace || !newIncident.incidentDrone || !newIncident.incidentReason || !newIncident.incidentRegion || !newIncident.incidentIssue) { // Corrected validation
-      displayMessage("Please fill in all required fields for incident.", 'error');
-      return;
-    }
 
-    const incidentData = {
-      type: newIncident.type,
-      message: newIncident.message,
-      when: new Date(newIncident.when).toISOString(),
-      place: newIncident.incidentPlace, // Corrected from incidentPlace
-      drone: newIncident.incidentDrone, // Corrected from incidentDrone
-      reason: newIncident.incidentReason, // Corrected from incidentReason
-      region: newIncident.incidentRegion, // Corrected from incidentRegion
-      issue: newIncident.incidentIssue, // Corrected from incidentIssue
+
+const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage }) => {
+    const [selectedDroneId, setSelectedDroneId] = useState('');
+
+    useEffect(() => {
+        // Set a default drone from the list when the component loads or the list changes
+        if (drones.length > 0 && !drones.find(d => d.id === selectedDroneId)) {
+            setSelectedDroneId(drones[0].id);
+        }
+    }, [drones, selectedDroneId]);
+
+    const currentTelemetry = liveTelemetry[selectedDroneId] || {};
+    const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
+
+    const handleCommand = (command, params = {}) => {
+        if (!selectedDroneId) {
+            displayMessage("No drone selected.", 'error');
+            return;
+        }
+        if (!isSelectedDroneOnline) {
+            displayMessage(`Cannot send command: Drone ${selectedDroneId} is offline.`, 'error');
+            return;
+        }
+        sendDroneCommand(selectedDroneId, command, params);
     };
 
-    try {
-      let response;
-      let data;
-      if (editingIncidentId) { // editingIncidentId needs to be defined
-        response = await fetch(`http://localhost:5000/api/incidents/${editingIncidentId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(incidentData),
-        });
-        data = await response.json();
-        if (response.ok) {
-          setIncidents(prev => prev.map(inc =>
-            inc.id === editingIncidentId
-              ? { ...inc, ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }
-              : inc
-          ));
-          displayMessage("Incident updated successfully!", 'success');
-          setEditingIncidentId(null);
-        } else {
-          displayMessage(`Failed to update incident: ${data.error || response.statusText}`, 'error');
-        }
-      } else {
-        response = await fetch('http://localhost:5000/api/incidents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...incidentData, resolved: false, timestamp: new Date().toISOString() }),
-        });
-        data = await response.json();
-        if (response.ok) {
-          setIncidents(prev => [...prev, { ...data, when: new Date(data.when), timestamp: data.timestamp ? new Date(data.timestamp) : null }]);
-          displayMessage("Incident reported successfully!", 'success');
-        } else {
-          displayMessage(`Failed to report incident: ${data.error || response.statusText}`, 'error');
-        }
-      }
-      setNewIncident({ type: 'alert', message: '', timestamp: '', when: '', place: '', drone: '', reason: '', region: '', issue: '' });
-      setShowAddModal(false);
-    } catch (error) {
-      console.error('Error processing incident:', error);
-      displayMessage('Error processing incident: Network issue or server offline.', 'error');
-    }
-  };
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+            <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
 
-  const handleToggleResolve = async (id, currentResolvedStatus) => {
-    try {
-      const response = await fetch(`http://localhost:5000/api/incidents/${id}`, {
-        method: 'PUT', // Use PUT for updates
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resolved: !currentResolvedStatus }),
-      });
-      if (response.ok) {
-        setIncidents(prev => prev.map(inc =>
-          inc.id === id ? { ...inc, resolved: !inc.resolved } : inc
-        ));
-        displayMessage("Incident status updated.", 'info');
-      } else {
-        const data = await response.json();
-        displayMessage(`Failed to update incident status: ${data.error || response.statusText}`, 'error');
-      }
-    } catch (error) {
-      console.error('Error updating incident status:', error);
-      displayMessage('Error updating incident status: Network issue or server offline.', 'error');
-    }
-  };
-
-  const handleDeleteIncident = async (id) => {
-    if (window.confirm("Are you sure you want to delete this incident?")) {
-      try {
-        const response = await fetch(`http://localhost:5000/api/incidents/${id}`, {
-          method: 'DELETE',
-        });
-        if (response.ok) {
-          setIncidents(prev => prev.filter(inc => inc.id !== id));
-          displayMessage("Incident deleted.", 'info');
-        } else {
-          const data = await response.json();
-          displayMessage(`Failed to delete incident: ${data.error || response.statusText}`, 'error');
-        }
-      } catch (error) {
-        console.error('Error deleting incident:', error);
-        displayMessage('Error deleting incident: Network issue or server offline.', 'error');
-      }
-    }
-  };
-
-  const getStatusColor = (type) => {
-    switch (type) {
-      case 'alert': return 'bg-red-100 text-red-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'info': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">Incidents Management</h2>
-
-      <div className="mb-6 flex justify-end">
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
-        >
-          <PlusCircle className="w-5 h-5 mr-2" /> Report New Incident
-        </button>
-      </div>
-
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">Report New Incident</h3>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="incidentType" className="block text-sm font-medium text-gray-700">Incident Type</label>
-                <select
-                  id="incidentType"
-                  value={newIncident.type}
-                  onChange={(e) => setNewIncident({ ...newIncident, type: e.target.value })}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-                >
-                  <option value="alert">Alert</option>
-                  <option value="warning">Warning</option>
-                  <option value="info">Info</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="incidentMessage" className="block text-sm font-medium text-gray-700">Message</label>
-                <textarea
-                  id="incidentMessage"
-                  value={newIncident.message}
-                  onChange={(e) => setNewIncident({ ...newIncident, message: e.target.value })}
-                  rows="3"
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-                ></textarea>
-              </div>
-              <div>
-                <label htmlFor="incidentTimestamp" className="block text-sm font-medium text-gray-700">Timestamp</label>
-                <input
-                  type="datetime-local"
-                  id="incidentTimestamp"
-                  value={newIncident.timestamp}
-                  onChange={(e) => setNewIncident({ ...newIncident, timestamp: e.target.value })}
-                  className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddOrUpdateIncident}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Report Incident
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {incidents.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
-          <p className="text-gray-500 text-lg">No incidents found. Report a new incident to get started!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {incidents.map(incident => (
-            <div key={incident.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">{incident.message}</h3>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(incident.type)}`}>
-                  {incident.type.charAt(0).toUpperCase() + incident.type.slice(1)}
-                </span>
-              </div>
-              <p className="text-gray-600 text-sm mb-4 flex-grow">
-                Timestamp: {incident.timestamp ? new Date(incident.timestamp).toLocaleString() : 'N/A'}
-              </p>
-
-              <div className="flex justify-between items-center text-sm mt-auto">
-                <span className={`font-medium ${incident.resolved ? 'text-green-600' : 'text-orange-600'}`}>
-                  Status: {incident.resolved ? 'Resolved' : 'Unresolved'}
-                </span>
+            <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-lg shadow-sm">
+                <div className="flex items-center space-x-3">
+                    <label htmlFor="drone-select" className="text-gray-700 font-medium">Select Drone:</label>
+                    <select
+                        id="drone-select"
+                        value={selectedDroneId}
+                        onChange={(e) => setSelectedDroneId(e.target.value)}
+                        className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                        {drones.length > 0 ? (
+                            drones.map(drone => (
+                                <option key={drone.id} value={drone.id}>{drone.name} ({drone.id})</option>
+                            ))
+                        ) : (
+                            <option>No drones available</option>
+                        )}
+                    </select>
+                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isSelectedDroneOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {isSelectedDroneOnline ? 'Online' : 'Offline'}
+                    </span>
+                </div>
                 <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleToggleResolve(incident.id, incident.resolved)}
-                    className={`p-2 rounded-full ${incident.resolved ? 'text-orange-500 hover:bg-orange-100' : 'text-green-500 hover:bg-green-100'} transition-colors`}
-                    title={incident.resolved ? "Mark as Unresolved" : "Mark as Resolved"}
-                  >
-                    {incident.resolved ? <XCircle className="w-5 h-5" /> : <Check className="w-5 h-5" />}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteIncident(incident.id)}
-                    className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors"
-                    title="Delete Incident"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
+                        <Rocket className="w-5 h-5 mr-2" /> Takeoff
+                    </button>
+                    <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
+                        <Home className="w-5 h-5 mr-2" /> Land
+                    </button>
+                    <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
+                        <Camera className="w-5 h-5 mr-2" /> Take Photo
+                    </button>
                 </div>
-              </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
-
-// --- Main App Component (Main Export) ---
-const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [liveTelemetry, setLiveTelemetry] = useState({}); // State for live telemetry data
-  const [notifications, setNotifications] = useState([]); // State for notifications
-  const [message, setMessage] = useState(''); // State for toast messages
-  const [messageType, setMessageType] = useState(''); // Type of toast message (info, success, error)
-  // State for data fetched from backend (these should be empty arrays initially)
-  const [drones, setDrones] = useState([]);
-  const [missions, setMissions] = useState([]);
-  const [mediaItems, setMediaItems] = useState([]);
-  const [maintenanceParts, setMaintenanceParts] = useState([]);
-  const [incidents, setIncidents] = useState([]);
-
-// User profile state
-const [userProfile, setUserProfile] = useState({
-  name: 'M Osman',
-  email: 'm.osman@example.com',
-  profilePicture: 'https://placehold.co/150x150/a78bfa/ffffff?text=Profile', // Placeholder image
-  totalFlights: 150,
-  totalFlightTime: '250h 30m',
-  averageFlightTime: '1h 40m',
-});
-
-  const navigate = useNavigate();
-
-  // Function to display toast messages (defined early so useEffect can use it)
-  const displayMessage = useCallback((text, type = 'info') => {
-    setMessage(text);
-    setMessageType(type);
-    setTimeout(() => {
-      setMessage('');
-      setMessageType('');
-    }, 3000);
-  }, []); // Empty dependency array means it's created once and doesn't change
-
-  // Initialize Socket.IO connection
-  const socket = useRef(null);
-
-  useEffect(() => {
-    // Only connect if authenticated and socket not already connected
-    if (isAuthenticated && !socket.current) {
-      const FLASK_BACKEND_WS_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
-      const newSocket = io(FLASK_BACKEND_WS_URL);
-      socket.current = newSocket; // Assign to ref
-
-      newSocket.on('connect', () => {
-        console.log('Connected to Flask Socket.IO backend!');
-        displayMessage('Connected to real-time backend!', 'success');
-        newSocket.emit('register_as_frontend'); // Register this client as a frontend
-      });
-
-      newSocket.on('disconnect', () => {
-        console.log('Disconnected from Flask Socket.IO backend.');
-        displayMessage('Disconnected from real-time backend.', 'error');
-      });
-
-      newSocket.on('drone_telemetry_update', (data) => { // Changed from 'telemetry_data' to 'drone_telemetry_update' to match backend
-        setLiveTelemetry(prev => ({
-          ...prev,
-          [data.drone_id]: data.telemetry
-        }));
-      });
-
-      newSocket.on('new_notification', (data) => { // Changed from 'notification' to 'new_notification' to match backend
-        console.log('New notification:', data);
-        const newNotification = {
-          id: data.id, // Use ID from backend if provided, otherwise generate
-          message: data.message,
-          type: data.type || 'info', // 'info', 'alert', 'success'
-          read: data.read || false, // Default to unread
-          timestamp: new Date(data.timestamp), // Parse timestamp to Date object
-        };
-        setNotifications(prev => [newNotification, ...prev]); // Add new notification to the top
-        displayMessage(newNotification.message, newNotification.type); // Show toast
-      });
-
-      newSocket.on('command_status_report', (data) => { // Changed from 'drone_command_response' to 'command_status_report' to match backend
-        displayMessage(`Command for ${data.drone_id}: ${data.status} - ${data.message}`, data.status === 'success' ? 'success' : 'error');
-      });
-    }
-
-    // Clean up on unmount or when isAuthenticated changes
-    return () => {
-      if (socket.current) {
-        socket.current.disconnect();
-        socket.current = null;
-      }
-    };
-  }, [isAuthenticated, displayMessage]); // Added displayMessage to dependencies for useCallback
-
-  // Function to send drone commands via REST API (as backend expects REST for commands)
-  const sendDroneCommand = useCallback(async (droneId, command, params = {}) => {
-    if (socket.current && socket.current.connected) {
-      try {
-        const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // !!! ADJUST THIS URL !!!
-        const response = await fetch(`${FLASK_BACKEND_REST_URL}/api/command_drone/${droneId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command, params }),
-        });
-        const data = await response.json();
-        console.log('Command API response:', data);
-      } catch (error) {
-        console.error('Error sending command to backend:', error);
-        displayMessage('Failed to send command to backend.', 'error');
-      }
-    } else {
-      displayMessage('Not connected to backend WebSocket. Command not sent.', 'error');
-    }
-  }, [displayMessage]);
-
-
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
-    navigate('/'); // Redirect to dashboard after login
-  };
-
-  const handleLogout = () => {
-    if (auth) {
-      auth.signOut().then(() => {
-        setIsAuthenticated(false);
-        navigate('/auth');
-        displayMessage("Logged out successfully.", 'info');
-      }).catch((error) => {
-        console.error("Error signing out:", error);
-        displayMessage(`Logout error: ${error.message}`, 'error');
-      });
-    } else {
-      setIsAuthenticated(false); // For anonymous or uninitialized auth
-      navigate('/auth');
-      displayMessage("Logged out (no Firebase auth).", 'info');
-    }
-  };
-
-  // Initial Data Fetching from Flask REST APIs
-  useEffect(() => {
-    const fetchAllInitialData = async () => {
-      if (!isAuthenticated) return; // Only fetch if authenticated
-
-      try {
-        const FLASK_BACKEND_REST_URL = "http://127.0.0.1:5000"; // Ensure this is correct
-
-        const endpoints = {
-          drones: `${FLASK_BACKEND_REST_URL}/api/drones`,
-          missions: `${FLASK_BACKEND_REST_URL}/api/missions`,
-          media: `${FLASK_BACKEND_REST_URL}/api/media`,
-          maintenanceParts: `${FLASK_BACKEND_REST_URL}/api/maintenance_parts`,
-          incidents: `${FLASK_BACKEND_REST_URL}/api/incidents`,
-          notifications: `${FLASK_BACKEND_REST_URL}/api/notifications`, // Fetch initial notifications via REST too
-        };
-
-        const fetchPromises = Object.entries(endpoints).map(async ([key, url]) => {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status} from ${url}`);
-            }
-            const data = await response.json();
-            return { key, data };
-          } catch (error) {
-            console.error(`Error fetching ${key} from ${url}:`, error);
-            displayMessage(`Failed to load ${key}.`, 'error');
-            return { key, data: [] }; // Return empty array on error
-          }
-        });
-
-        const results = await Promise.all(fetchPromises);
-
-        results.forEach(({ key, data }) => {
-          if (key === 'drones') setDrones(data.map(d => ({
-            ...d,
-            lastFlight: d.last_flight ? new Date(d.last_flight) : null,
-            // Add other date parsing if necessary
-          })));
-          else if (key === 'missions') setMissions(data.map(m => ({
-            ...m,
-            startTime: m.start_time ? new Date(m.start_time) : null,
-            endTime: m.end_time ? new Date(m.end_time) : null,
-          })));
-          else if (key === 'media') setMediaItems(data.map(m => ({
-            ...m,
-            date: m.timestamp ? new Date(m.timestamp) : null, // Use timestamp from backend for 'date'
-          })));
-          else if (key === 'maintenanceParts') setMaintenanceParts(data.map(p => ({
-            ...p,
-            lastMaintenance: p.last_maintenance ? new Date(p.last_maintenance) : null,
-            nextMaintenance: p.next_maintenance ? new Date(p.next_maintenance) : null,
-          })));
-          else if (key === 'incidents') setIncidents(data.map(i => ({
-            ...i,
-            timestamp: i.timestamp ? new Date(i.timestamp) : null,
-            when: i.when ? new Date(i.when) : null, 
-          })));
-          else if (key === 'notifications') setNotifications(data.map(n => ({
-            ...n,
-            timestamp: n.timestamp ? new Date(n.timestamp) : null,
-          })));
-        });
-
-      } catch (error) {
-        console.error('Error fetching all initial data:', error);
-        displayMessage('Failed to load some application data.', 'error');
-      }
-    };
-
-    fetchAllInitialData();
-  }, [isAuthenticated, displayMessage]); // Re-fetch when authentication status changes
-
-
-  const handleCaptureMedia = (newMedia) => {
-    setMediaItems(prevItems => [...prevItems, { id: `m${prevItems.length + 1}`, ...newMedia }]);
-    displayMessage("Media captured and saved to Media Library!", 'success');
-  };
-
-  return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* The Router now wraps the entire application */}
-      
-        {isAuthenticated ? (
-          <div className="flex">
-            <Sidebar onLogout={handleLogout} />
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Header */}
-              <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
-                <h1 className="text-2xl font-semibold text-gray-800">Drone Operations Dashboard</h1>
-                <div className="flex items-center space-x-4">
-                  {message && (
-                    <div className={`px-4 py-2 rounded-md text-white text-sm font-medium ${
-                      messageType === 'success' ? 'bg-green-500' :
-                      messageType === 'error' ? 'bg-red-500' :
-                      'bg-blue-500'
-                    }`}>
-                      {message}
+            {/* Rest of your UI for video feed, map, and telemetry panels */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                <div className="lg:col-span-2 bg-gray-900 rounded-xl shadow-md flex items-center justify-center text-gray-400">
+                    Simulated Drone Feed
+                </div>
+                <div className="lg:col-span-1 flex flex-col space-y-6">
+                    <div className="bg-white rounded-xl shadow-md p-4 flex-1">
+                        <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
+                        <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude || 'N/A'}, Lng: {currentTelemetry.longitude || 'N/A'}</p>
                     </div>
-                  )}
-                  <Link to="/notifications" className="relative p-2 rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                    <Bell className="h-6 w-6" />
-                    {notifications.filter(n => !n.read).length > 0 && (
-                      <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-red-100 bg-red-600 rounded-full">
-                        {notifications.filter(n => !n.read).length}
-                      </span>
-                    )}
-                  </Link>
-<button className="flex items-center space-x-2 text-gray-700 hover:text-gray-900">
-  <img src={userProfile.profilePicture} alt="User avatar" className="h-8 w-8 rounded-full" /> {/* CHANGE 'user' to 'userProfile' */}
-  <span className="font-medium text-sm">{userProfile.name}</span> {/* CHANGE 'm osman' to '{userProfile.name}' */}
-  <ChevronDown className="h-4 w-4" />
-</button>
+                    <div className="bg-white rounded-xl shadow-md p-4">
+                        <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
+                        <p>Altitude: {currentTelemetry.altitude || 0}m</p>
+                        <p>Speed: {currentTelemetry.speed || 0} m/s</p>
+                        <p>Battery: {currentTelemetry.battery_percent || 0}%</p>
+                    </div>
                 </div>
-              </header>
-
-              {/* Main Content Area */}
-              <main className="flex-1 p-6 bg-gray-100 overflow-y-auto">
-                <Routes>
-                  <Route path="/" element={<Dashboard drones={drones} missions={missions} incidents={incidents} mediaItems={mediaItems} maintenanceParts={maintenanceParts} />} />
-                  <Route path="/live-operations" element={<LiveOperations
-                    drones={drones} // Pass drones prop
-                    liveTelemetry={liveTelemetry}
-                    sendDroneCommand={sendDroneCommand}
-                    displayMessage={displayMessage}
-                  />} />
-                  <Route path="/missions" element={<Missions missions={missions} setMissions={setMissions} displayMessage={displayMessage} />} />
-
-                  {/* Assets Routes */}
-                  <Route path="/assets" element={<Drones drones={drones} setDrones={setDrones} displayMessage={displayMessage} />} /> {/* Pass drones prop */}
-                  <Route path="/assets/drones" element={<Drones drones={drones} setDrones={setDrones} displayMessage={displayMessage} />} />
-                  <Route path="/assets/ground-stations" element={<GroundStations />} />
-                  <Route path="/assets/equipment" element={<Equipment />} />
-                  <Route path="/assets/batteries" element={<Batteries />} />
-
-                  {/* Library Routes */}
-                  <Route path="/library/media" element={<Media mediaItems={mediaItems} setMediaItems={setMediaItems} displayMessage={displayMessage} />} />
-                  
-                  <Route path="/library/files" element={<Files />} />
-                  <Route path="/library/checklists" element={<Checklists />} />
-                  <Route path="/library/tags" element={<Tags />} />
-
-                  {/* Manage Routes */}
-                  <Route path="/manage/profile-settings" element={<ProfileSettings user={userProfile} setUser={setUserProfile} displayMessage={displayMessage} />} />
-                  <Route path="/notifications" element={<NotificationsPage notifications={notifications} setNotifications={setNotifications} displayMessage={displayMessage} />} />
-                  <Route path="/manage/incidents" element={<IncidentSection incidents={incidents} setIncidents={setIncidents} displayMessage={displayMessage} />} />
-                  <Route path="/manage/maintenance" element={<MaintenanceSection maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} displayMessage={displayMessage} />} />
-                </Routes>
-              </main>
             </div>
-          </div>
-        ) : (
-          // If not authenticated, render the AuthPage
-          <AuthPage onLoginSuccess={handleLoginSuccess} />
-        )}
-      
-    </div>
-  );
+        </div>
+    );
+};
+
+
+
+
+// --- Main App Component ---
+
+const App = () => {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const navigate = useNavigate();
+
+    // Centralized Data State
+    const [drones, setDrones] = useState([]);
+    const [missions, setMissions] = useState([]);
+    const [mediaItems, setMediaItems] = useState([]);
+    const [incidents, setIncidents] = useState([]);
+    const [maintenanceParts, setMaintenanceParts] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [liveTelemetry, setLiveTelemetry] = useState({});
+    const [connectedDrones, setConnectedDrones] = useState([]);
+
+    // Local UI State for components without a backend
+    const [groundStations, setGroundStations] = useState([]);
+    const [equipment, setEquipment] = useState([]);
+    const [batteries, setBatteries] = useState([]);
+    const [files, setFiles] = useState([]);
+    const [userProfile, setUserProfile] = useState({});
+
+    // UI Feedback State
+    const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState('info');
+    const displayMessage = useCallback((text, type = 'info') => {
+        setMessage(text);
+        setMessageType(type);
+        setTimeout(() => setMessage(''), 4000);
+    }, []);
+
+    // --- Data Fetching & WebSocket Logic ---
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const fetchAllInitialData = async () => {
+            try {
+                const [dronesData, missionsData, mediaData, incidentsData, maintenanceData, notifsData, connectedDronesData] = await Promise.all([
+                    apiRequest('/api/drones'),
+                    apiRequest('/api/missions'),
+                    apiRequest('/api/media'),
+                    apiRequest('/api/incidents'),
+                    apiRequest('/api/maintenance_parts'),
+                    apiRequest('/api/notifications'),
+                    apiRequest('/api/connected_drones'),
+                ]);
+                setDrones(dronesData);
+                setMissions(missionsData);
+                setMediaItems(mediaData);
+                setIncidents(incidentsData);
+                setMaintenanceParts(maintenanceData);
+                setNotifications(notifsData);
+                setConnectedDrones(connectedDronesData);
+            } catch (error) {
+                displayMessage(`Failed to load system data: ${error.message}`, 'error');
+            }
+        };
+        fetchAllInitialData();
+
+        const socket = io(WEBSOCKET_URL);
+        socket.on('connect', () => {
+            socket.emit('register_as_frontend');
+            apiRequest('/api/connected_drones').then(setConnectedDrones);
+        });
+
+        socket.on('drone_telemetry_update', data => {
+            setLiveTelemetry(prev => ({ ...prev, [data.drone_id]: data.telemetry }));
+            setDrones(prev => prev.map(d => d.id === data.drone_id ? { ...d, battery: data.telemetry.battery_percent, status: 'Online', last_updated: new Date().toISOString() } : d));
+            if (!connectedDrones.includes(data.drone_id)) {
+                setConnectedDrones(prev => [...prev, data.drone_id]);
+            }
+        });
+
+        socket.on('new_notification', notification => {
+            setNotifications(prev => [notification, ...prev]);
+            if (notification.message.includes("gateway connected")) {
+                const droneId = notification.message.split(' ')[1];
+                setConnectedDrones(prev => [...new Set([...prev, droneId])]);
+                 setDrones(prev => prev.map(d => d.id === droneId ? { ...d, status: 'Online' } : d));
+            } else if (notification.message.includes("gateway disconnected")) {
+                const droneId = notification.message.split(' ')[1];
+                setConnectedDrones(prev => prev.filter(id => id !== droneId));
+                 setDrones(prev => prev.map(d => d.id === droneId ? { ...d, status: 'Offline' } : d));
+            }
+        });
+
+        socket.on('new_media_available', media => setMediaItems(prev => [media, ...prev]));
+        socket.on('notification_updated', updated => setNotifications(prev => prev.map(n => n.id === updated.id ? updated : n)));
+        socket.on('notification_deleted', deleted => setNotifications(prev => prev.filter(n => n.id !== deleted.id)));
+
+        return () => socket.disconnect();
+    }, [isAuthenticated, displayMessage]);
+
+    // --- API HANDLER FUNCTIONS ---
+    const handleAddItem = async (endpoint, data, stateSetter, itemName) => {
+        try {
+            const newItem = await apiRequest(endpoint, 'POST', data);
+            stateSetter(prev => [...prev, newItem]);
+            displayMessage(`${itemName} added successfully!`, 'success');
+            return true;
+        } catch (error) {
+            displayMessage(error.message, 'error');
+            return false;
+        }
+    };
+    
+    const handleDeleteItem = async (endpoint, id, stateSetter, itemName) => {
+        if (window.confirm(`Are you sure you want to delete this ${itemName}?`)) {
+            try {
+                await apiRequest(`${endpoint}/${id}`, 'DELETE');
+                stateSetter(prev => prev.filter(item => item.id !== id));
+                displayMessage(`${itemName} deleted.`, 'success');
+            } catch (error) {
+                displayMessage(error.message, 'error');
+            }
+        }
+    };
+
+    const handleAddDrone = (data) => handleAddItem('/api/drones', data, setDrones, 'Drone');
+    const handleDeleteDrone = (id) => handleDeleteItem('/api/drones', id, setDrones, 'drone');
+    const handleAddMission = (data) => handleAddItem('/api/missions', data, setMissions, 'Mission');
+    const handleAddIncident = (data) => handleAddItem('/api/incidents', data, setIncidents, 'Incident');
+    const handleUpdateIncident = async (id, data) => {
+        try {
+            const updated = await apiRequest(`/api/incidents/${id}`, 'PUT', data);
+            setIncidents(prev => prev.map(i => (i.id === id ? updated : i)));
+            displayMessage('Incident updated.', 'success');
+        } catch (error) { displayMessage(error.message, 'error'); }
+    };
+    const handleDeleteIncident = (id) => handleDeleteItem('/api/incidents', id, setIncidents, 'incident');
+
+    const handleAddMedia = (data) => handleAddItem('/api/media', data, setMediaItems, 'Media Item');
+    const handleDeleteMedia = (id) => handleDeleteItem('/api/media', id, setMediaItems, 'media item');
+
+    const handleAddMaintenancePart = (data) => handleAddItem('/api/maintenance_parts', data, setMaintenanceParts, 'Maintenance Part');
+    
+    // ... (Add other handlers like handleAddMission, handleDeleteMission etc. following the pattern)
+
+    const sendDroneCommand = async (droneId, command, params = {}) => {
+        try {
+            await apiRequest(`/api/command_drone/${droneId}`, 'POST', { command, params });
+            displayMessage(`Command '${command}' sent.`, 'success');
+        } catch (error) { displayMessage(error.message, 'error'); }
+    };
+    
+    // --- AUTH ---
+    const handleLoginSuccess = () => { setIsAuthenticated(true); navigate('/'); };
+    const handleLogout = () => { setIsAuthenticated(false); navigate('/auth'); };
+    
+    // --- RENDER ---
+    return (
+        <div className="flex min-h-screen bg-gray-100">
+            {isAuthenticated ? (
+                <>
+                    <Sidebar onLogout={handleLogout} notifications={notifications} />
+                    <div className="flex-1 flex flex-col">
+                        <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
+                            <h1 className="text-xl font-semibold">Drone Operations Dashboard</h1>
+                            {message && <div className={`px-4 py-2 rounded text-white text-sm ${messageType === 'success' ? 'bg-green-500' : messageType === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}>{message}</div>}
+                        </header>
+                        <main className="flex-1 p-6 overflow-y-auto">
+                            <Routes>
+                                <Route path="/" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} />} />
+                                
+                                <Route path="/live-operations" element={<LiveOperations drones={drones} connectedDrones={connectedDrones} liveTelemetry={liveTelemetry} sendDroneCommand={sendDroneCommand} displayMessage={displayMessage} />} />
+                                <Route path="/missions" element={<Missions missions={missions} drones={drones} handleAddMission={handleAddMission} displayMessage={displayMessage} />} />
+
+                                {/* Assets */}
+                                <Route path="/assets/drones" element={<Drones drones={drones} handleAddDrone={handleAddDrone} handleDeleteDrone={handleDeleteDrone} displayMessage={displayMessage} />} />
+                                <Route path="/assets/ground-stations" element={<GroundStations groundStations={groundStations} setGroundStations={setGroundStations} />} />
+                                <Route path="/assets/equipment" element={<Equipment equipment={equipment} setEquipment={setEquipment} />} />
+                                <Route path="/assets/batteries" element={<Batteries batteries={batteries} setBatteries={setBatteries} />} />
+
+                                {/* Library */}
+                                <Route path="/library/media" element={<Media mediaItems={mediaItems} handleAddMedia={handleAddMedia} handleDeleteMedia={handleDeleteMedia} displayMessage={displayMessage} />} />
+                                <Route path="/library/files" element={<Files files={files} setFiles={setFiles} />} />
+                                
+                                {/* Manage */}
+                                
+                                
+                                <Route path="/manage/incidents" element={
+                                    <IncidentSection 
+                                        incidents={incidents} 
+                                        handleAddIncident={handleAddIncident}
+                                        handleUpdateIncident={handleUpdateIncident}
+                                        handleDeleteIncident={handleDeleteIncident}
+                                        displayMessage={displayMessage} 
+                                    />
+                                } />
+                                <Route path="/manage/maintenance" element={<MaintenanceSection parts={maintenanceParts} handleAddPart={handleAddMaintenancePart} displayMessage={displayMessage} />} />
+                                <Route path="/manage/profile-settings" element={<ProfileSettings user={userProfile} setUser={setUserProfile} displayMessage={displayMessage} />} />
+                                
+                                <Route path="/notifications" element={<NotificationsPage notifications={notifications} />} />
+                                
+                                <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} />} />
+                            </Routes>
+                        </main>
+                    </div>
+                </>
+            ) : (
+                <Routes><Route path="*" element={<AuthPage onLoginSuccess={handleLoginSuccess} />} /></Routes>
+            )}
+        </div>
+    );
+    
 };
 
 export default App;
