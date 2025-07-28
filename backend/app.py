@@ -1,899 +1,1288 @@
-import os
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
+import uuid
+import datetime
+import random
 import time
 import threading
-import random
-from datetime import datetime, timezone
-
-from flask import Flask, jsonify, request
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from flask_cors import CORS
-from dotenv import load_dotenv
-
-# SQLAlchemy and Flask-SQLAlchemy Imports
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text
-from sqlalchemy.dialects.postgresql import JSONB
-
-# Flask-Migrate Import
-from flask_migrate import Migrate
-
-# Load environment variables from .env file
-load_dotenv()
-
+from functools import wraps
 app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+socketio = SocketIO(app, cors_allowed_origins="http://localhost:3000")
 
-# --- Flask-CORS Configuration ---
-# Allow requests from your React frontend (localhost:3000) and any other origins needed
-# For production, replace "*" with specific origins like "http://localhost:3000, https://your-frontend-domain.com"
-CORS(app, resources={r"/api/*": {"origins": "*"}}) # Apply CORS to /api routes
-CORS(app) # Apply CORS to all other routes (including Socket.IO)
 
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://your_username:your_password@localhost:5432/your_database_name')
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False # Disable tracking modifications for performance
-
-db = SQLAlchemy(app)
-
-# --- Flask-Migrate Initialization ---
-migrate = Migrate(app, db)
-
-# --- Flask-SocketIO Configuration ---
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your_super_secret_key_here')
-socketio = SocketIO(app, cors_allowed_origins="*") # Ensure SocketIO also allows CORS from all origins for development
-
-# --- SQLAlchemy Database Models ---
-class Drone(db.Model):
-    __tablename__ = 'drones'
-    id = Column(String, primary_key=True) # Drone ID (e.g., DRN-SIM-001)
-    name = Column(String(100), nullable=False)
-    status = Column(String(50))
-    battery = Column(Integer)
-    location = Column(String(100))
-    last_flight = Column(DateTime)
-    flight_hours = Column(Float)
-    last_telemetry = Column(JSONB)
-    last_updated = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    live_stream_url = Column(String(500)) # Added for live video stream URL
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'status': self.status,
-            'battery': self.battery,
-            'location': self.location,
-            'lastFlight': self.last_flight.isoformat() if self.last_flight else None, # camelCase
-            'flightHours': self.flight_hours, # camelCase
-            'lastTelemetry': self.last_telemetry, # camelCase
-            'lastUpdated': self.last_updated.isoformat() if self.last_updated else None, # camelCase
-            'liveStreamUrl': self.live_stream_url # camelCase
+db = {
+    "users": {
+        "user1": {
+            "id": "user1",
+            "username": "admin",
+            "password": "password123",  # In production, hash passwords!
+            "name": "Admin User",
+            "email": "admin@airvibe.com",
+            "profilePicture": "https://placehold.co/150x150/5cb85c/ffffff?text=ADM",
+            "totalFlights": 150,
+            "totalFlightTime": "320h",
+            "averageFlightTime": "2.1h",
+            "role": "admin" # NEW: Admin role
+        },
+        "user2": {
+            "id": "user2",
+            "username": "john.doe",
+            "password": "password123",
+            "name": "John Doe",
+            "email": "john.doe@example.com",
+            "profilePicture": "https://placehold.co/150x150/3498db/ffffff?text=JD",
+            "totalFlights": 50,
+            "totalFlightTime": "80h",
+            "averageFlightTime": "1.6h",
+            "role": "user" # NEW: Regular user role
         }
-
-class Notification(db.Model):
-    __tablename__ = 'notifications'
-    id = Column(Integer, primary_key=True) # Auto-incrementing ID
-    message = Column(Text, nullable=False)
-    type = Column(String(50)) # 'info', 'alert', 'success'
-    read = Column(Boolean, default=False)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'message': self.message,
-            'type': self.type,
-            'read': self.read,
-            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+    },
+    "drones": [
+        {
+            "id": "d1",
+            "name": "AirVibe Falcon 100",
+            "model": "AV-F100",
+            "manufacturer": "AirVibe Tech",
+            "uniqueId": "DRN-AV-001",
+            "status": "Available",
+            "lastLocation": "Hangar 3, Muscat",
+            "flightHours": 125.5,
+            "payloadCapacity": 2.5,
+            "imageUrl": "https://placehold.co/400x300/4a90e2/ffffff?text=AirVibe+F100",
+            "type": "Drone",
+            "maintenanceHistory": [
+                {"date": "2025-06-01", "description": "Annual check-up, firmware update.", "performedBy": "Tech Team A", "cost": 150},
+                {"date": "2025-03-10", "description": "Propeller replacement after minor incident.", "performedBy": "Tech Team B", "cost": 75},
+            ],
+        },
+        {
+            "id": "d2",
+            "name": "SkyGuard Sentinel",
+            "model": "SG-S200",
+            "manufacturer": "SkyGuard Systems",
+            "uniqueId": "DRN-SG-002",
+            "status": "Deployed",
+            "lastLocation": "Mission Alpha, Site C",
+            "flightHours": 89.2,
+            "payloadCapacity": 1.8,
+            "imageUrl": "https://placehold.co/400x300/7ed321/ffffff?text=SkyGuard+S200",
+            "type": "Drone",
+            "maintenanceHistory": [
+                {"date": "2025-07-05", "description": "Pre-deployment system check.", "performedBy": "Pilot John Doe"},
+            ],
+        },
+        {
+            "id": "d3",
+            "name": "AeroScout Pro",
+            "model": "ASP-300",
+            "manufacturer": "AeroDyne Solutions",
+            "uniqueId": "DRN-AD-003",
+            "status": "In Maintenance",
+            "lastLocation": "Workshop Bay 1",
+            "flightHours": 210.0,
+            "payloadCapacity": 3.0,
+            "imageUrl": "https://placehold.co/400x300/f5a623/ffffff?text=AeroScout+P300",
+            "type": "Drone",
+            "maintenanceHistory": [
+                {"date": "2025-07-18", "description": "Scheduled 200-hour service and sensor calibration.", "performedBy": "Certified Service"},
+            ],
+        },
+    ],
+    "ground_stations": [
+        {
+            "id": "gs1",
+            "name": "BaseLink Pro",
+            "model": "BL-P500",
+            "manufacturer": "CommLink Corp",
+            "uniqueId": "GS-CL-001",
+            "status": "Available",
+            "coverageArea": "5 km radius",
+            "powerSource": "Solar/Battery",
+            "imageUrl": "https://placehold.co/400x300/9b59b6/ffffff?text=BaseLink+Pro",
+            "type": "Ground Station",
+            "maintenanceHistory": [
+                {"date": "2025-05-20", "description": "System diagnostic and antenna alignment.", "performedBy": "Field Engineer"},
+                {"date": "2024-11-15", "description": "Firmware upgrade and battery replacement.", "performedBy": "Service Partner", "cost": 300},
+            ],
+        },
+        {
+            "id": "gs2",
+            "name": "FieldNode X",
+            "model": "FN-X100",
+            "manufacturer": "GeoConnect",
+            "uniqueId": "GS-GC-002",
+            "status": "Deployed",
+            "coverageArea": "2 km radius",
+            "powerSource": "Generator",
+            "imageUrl": "https://placehold.co/400x300/34495e/ffffff?text=FieldNode+X",
+            "type": "Ground Station",
+            "maintenanceHistory": [
+                {"date": "2025-07-01", "description": "Routine power supply check.", "performedBy": "Local Team"},
+            ],
+        },
+    ],
+    "equipment": [
+        {
+            "id": "eq1",
+            "name": "High-Res Camera X1",
+            "model": "HRC-X1",
+            "manufacturer": "OptiLens",
+            "uniqueId": "EQ-OL-001",
+            "status": "Available",
+            "equipmentType": "Camera",
+            "compatibility": "AV-F100, SG-S200",
+            "imageUrl": "https://placehold.co/400x300/1abc9c/ffffff?text=Camera+X1",
+            "type": "Equipment",
+            "maintenanceHistory": [
+                {"date": "2025-04-01", "description": "Lens cleaning and sensor calibration.", "performedBy": "Internal Tech"},
+            ],
+        },
+        {
+            "id": "eq2",
+            "name": "Thermal Sensor T3",
+            "model": "TS-T3",
+            "manufacturer": "InfraScan",
+            "uniqueId": "EQ-IS-002",
+            "status": "In Maintenance",
+            "equipmentType": "Sensor",
+            "compatibility": "AV-F100",
+            "imageUrl": "https://placehold.co/400x300/e67e22/ffffff?text=Thermal+Sensor",
+            "type": "Equipment",
+            "maintenanceHistory": [
+                {"date": "2025-07-10", "description": "Thermal array recalibration.", "performedBy": "Manufacturer Service", "cost": 250},
+            ],
+        },
+    ],
+    "batteries": [
+        {
+            "id": "bat1",
+            "name": "Drone Battery XL",
+            "model": "DB-XL5000",
+            "manufacturer": "PowerCell Inc.",
+            "uniqueId": "BAT-PC-001",
+            "status": "Available",
+            "capacity": 5000,
+            "cycleCount": 45,
+            "lastCharged": "2025-07-19",
+            "imageUrl": "https://placehold.co/400x300/3498db/ffffff?text=Battery+XL",
+            "type": "Battery",
+            "maintenanceHistory": [
+                {"date": "2025-06-15", "description": "Routine cycle check, cell balancing.", "performedBy": "Internal Tech"},
+            ],
+        },
+        {
+            "id": "bat2",
+            "name": "Compact Drone Battery",
+            "model": "CDB-2500",
+            "manufacturer": "VoltTech",
+            "uniqueId": "BAT-VT-002",
+            "status": "In Maintenance",
+            "capacity": 2500,
+            "cycleCount": 120,
+            "lastCharged": "2025-07-10",
+            "imageUrl": "https://placehold.co/400x300/f1c40f/ffffff?text=Battery+CDB",
+            "type": "Battery",
+            "maintenanceHistory": [
+                {"date": "2025-07-12", "description": "Capacity degradation test, cell replacement.", "performedBy": "Specialized Repair", "cost": 100},
+            ],
+        },
+    ],
+    "missions": [
+        {
+            "id": "m1",
+            "name": "Coastal Survey Oman",
+            "drone_id": "d1",
+            "start_time": "2025-08-01T09:00:00Z",
+            "end_time": "2025-08-01T12:00:00Z",
+            "details": "High-resolution mapping of the northern Omani coastline.",
+            "status": "Scheduled",
+            "progress": 0
+        },
+        {
+            "id": "m2",
+            "name": "Oil Pipeline Inspection",
+            "drone_id": "d2",
+            "start_time": "2025-07-27T14:30:00Z",
+            "end_time": "2025-07-27T16:00:00Z",
+            "details": "Infrared inspection of critical pipeline sections.",
+            "status": "Active",
+            "progress": 75
         }
-
-class Mission(db.Model):
-    __tablename__ = 'missions'
-    id = Column(String, primary_key=True)
-    name = Column(String(255), nullable=False)
-    status = Column(String(50))
-    drone_id = Column(String(50)) # Foreign key to Drone.id
-    start_time = Column(DateTime)
-    end_time = Column(DateTime)
-    progress = Column(Integer)
-    details = Column(Text)
-    waypoints = Column(Integer)
-    area = Column(String(100))
-    payload = Column(String(255))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'status': self.status,
-            'drone': self.drone_id, # Frontend expects 'drone'
-            'startTime': self.start_time.isoformat() if self.start_time else None, # camelCase
-            'endTime': self.end_time.isoformat() if self.end_time else None,     # camelCase
-            'progress': self.progress,
-            'details': self.details,
-            'waypoints': self.waypoints,
-            'area': self.area,
-            'payload': self.payload
+    ],
+    "media": [
+        {
+            "id": "media1",
+            "title": "Muscat Port Overview",
+            "type": "image",
+            "url": "https://placehold.co/600x400/3498db/ffffff?text=Muscat+Port",
+            "thumbnail": "https://placehold.co/300x200/3498db/ffffff?text=Muscat+Port+Thumb",
+            "droneId": "d1",
+            "missionId": "m1",
+            "timestamp": "2025-07-26T10:30:00Z",
+            "gps": "23.6139° N, 58.5922° E",
+            "tags": ["port", "survey", "city"],
+            "description": "Aerial view of Muscat port captured during routine survey.",
+            "date": "2025-07-26"
+        },
+        {
+            "id": "media2",
+            "title": "Desert Patrol Footage",
+            "type": "video",
+            "url": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            "thumbnail": "https://placehold.co/300x200/cccccc/333333?text=Video+Placeholder",
+            "droneId": "d2",
+            "missionId": "m2",
+            "timestamp": "2025-07-25T15:10:00Z",
+            "gps": "22.5000° N, 57.0000° E",
+            "tags": ["patrol", "desert", "inspection"],
+            "description": "Footage from a desert surveillance mission.",
+            "date": "2025-07-25"
+        },
+        {
+            "id": "media3",
+            "title": "Infrastructure Damage",
+            "type": "image",
+            "url": "https://placehold.co/600x400/e74c3c/ffffff?text=Damage+Report",
+            "thumbnail": "https://placehold.co/300x200/e74c3c/ffffff?text=Damage+Report+Thumb",
+            "droneId": "d1",
+            "missionId": "m1",
+            "timestamp": "2025-07-28T09:15:00Z",
+            "gps": "23.6130° N, 58.5910° E",
+            "tags": ["incident", "damage", "report"],
+            "description": "Minor damage spotted on coastal infrastructure.",
+            "date": "2025-07-28"
         }
-
-class Media(db.Model):
-    __tablename__ = 'media'
-    id = Column(Integer, primary_key=True)
-    drone_id = Column(String(50), nullable=False) # Foreign key to Drone.id
-    media_url = Column(String(500), nullable=False)
-    type = Column(String(50)) # 'image', 'video'
-    title = Column(String(255))
-    description = Column(Text)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'droneId': self.drone_id, # camelCase
-            'url': self.media_url, # Frontend expects 'url'
-            'type': self.type,
-            'title': self.title,
-            'description': self.description,
-            'date': self.timestamp.isoformat() if self.timestamp else None, # Frontend expects 'date'
-            'thumbnail': self.media_url # Using full URL as thumbnail for simplicity
+    ],
+    "files": [
+        {
+            "id": "f1",
+            "name": "Drone X1 Flight Manual",
+            "type": "PDF",
+            "url": "https://www.africau.edu/images/default/sample.pdf",
+            "category": "Flight Manuals",
+            "uploadDate": "2025-01-10",
+            "description": "Official flight manual for Drone X1 model."
+        },
+        {
+            "id": "f2",
+            "name": "Safety Protocol V2.0",
+            "type": "PDF",
+            "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+            "category": "Safety Protocols",
+            "uploadDate": "2025-03-05",
+            "description": "Updated safety guidelines for all drone operations.",
+        },
+        {
+            "id": "f3",
+            "name": "Incident Report Template",
+            "type": "DOCX",
+            "url": "https://docs.google.com/document/d/1B_e0dY0_q_s_J_h_2_x_f_3_y_4_z_5_a_6_b_7_c_8_d_9_e_0",
+            "category": "Templates",
+            "uploadDate": "2025-06-20",
+            "description": "Standard template for reporting operational incidents.",
+        },
+    ],
+    "checklists": [
+        {
+            "id": "cl1",
+            "name": "Pre-Flight Checklist (Standard)",
+            "description": "Standard checks before every drone flight.",
+            "items": [
+                {"id": "item1", "text": "Battery charged and secured", "completed": False, "notes": ""},
+                {"id": "item2", "text": "Propellers attached correctly", "completed": False, "notes": ""},
+                {"id": "item3", "text": "Gimbal lock removed", "completed": False, "notes": ""},
+                {"id": "item4", "text": "GPS signal acquired", "completed": False, "notes": ""},
+                {"id": "item5", "text": "Clearance for takeoff", "completed": False, "notes": ""},
+            ],
+            "type": "template",
+            "dateCompleted": None,
+            "completedBy": None,
+            "completionNotes": None,
+        },
+        {
+            "id": "cl2",
+            "name": "Post-Flight Inspection",
+            "description": "Checks to perform after landing and before storage.",
+            "items": [
+                {"id": "item6", "text": "Drone powered off", "completed": False, "notes": ""},
+                {"id": "item7", "text": "Battery removed and cooled", "completed": False, "notes": ""},
+                {"id": "item8", "text": "Visual inspection for damage", "completed": False, "notes": ""},
+            ],
+            "type": "template",
+            "dateCompleted": None,
+            "completedBy": None,
+            "completionNotes": None,
+        },
+        {
+            "id": "cl3",
+            "name": "Maintenance Check (Weekly)",
+            "description": "Weekly maintenance routine for drone fleet.",
+            "items": [
+                {"id": "item9", "text": "Clean drone body", "completed": True, "notes": "Used compressed air."},
+                {"id": "item10", "text": "Check motor bearings", "completed": True, "notes": "All good."},
+                {"id": "item11", "text": "Software update check", "completed": False, "notes": ""},
+            ],
+            "type": "completed",
+            "dateCompleted": "2025-07-10",
+            "completedBy": "Tech John",
+            "completionNotes": "All routine checks passed, minor dust cleaning performed."
+        },
+    ],
+    "tags": [
+        {"id": "t1", "name": "Security", "description": "Tags related to security operations."},
+        {"id": "t2", "name": "Inspection", "description": "Tags for inspection missions and media."},
+        {"id": "t3", "name": "Maintenance", "description": "Tags for maintenance activities and assets."},
+        {"id": "t4", "name": "Aerial Survey", "description": "Tags for general aerial surveying."},
+    ],
+    "incidents": [
+        {
+            "id": "inc1",
+            "type": "alert",
+            "message": "Drone d2 battery critical (10%) during mission m2.",
+            "timestamp": "2025-07-27T15:45:00Z",
+            "resolved": False
+        },
+        {
+            "id": "inc2",
+            "type": "warning",
+            "message": "Unauthorized drone activity detected near restricted airspace.",
+            "timestamp": "2025-07-26T22:00:00Z",
+            "resolved": True
         }
-
-class MaintenancePart(db.Model):
-    __tablename__ = 'maintenance_parts'
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    status = Column(String(50))
-    last_maintenance = Column(DateTime)
-    next_maintenance = Column(DateTime)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'status': self.status,
-            'lastMaintenance': self.last_maintenance.isoformat() if self.last_maintenance else None, # camelCase
-            'nextMaintenance': self.next_maintenance.isoformat() if self.next_maintenance else None # camelCase
+    ],
+    "maintenance_parts": [
+        {
+            "id": "mp1",
+            "name": "Propeller Set A",
+            "status": "Available",
+            "lastMaintenance": "2025-07-01T00:00:00Z",
+            "nextMaintenance": "2025-09-01T00:00:00Z",
+        },
+        {
+            "id": "mp2",
+            "name": "Gimbal Stabilizer Unit",
+            "status": "In Repair",
+            "lastMaintenance": "2025-07-20T00:00:00Z",
+            "nextMaintenance": "2025-08-10T00:00:00Z",
         }
-
-class Incident(db.Model):
-    __tablename__ = 'incidents'
-    id = Column(Integer, primary_key=True)
-    type = Column(String(50)) # 'alert', 'warning', 'info'
-    message = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
-    resolved = Column(Boolean, default=False)
-    # New fields from frontend
-    when = Column(DateTime)
-    place = Column(String(255))
-    drone = Column(String(50)) # Drone ID
-    reason = Column(String(255))
-    region = Column(String(100))
-    issue = Column(String(255))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'type': self.type,
-            'message': self.message,
-            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
-            'resolved': self.resolved,
-            'when': self.when.isoformat() if self.when else None,
-            'place': self.place,
-            'drone': self.drone,
-            'reason': self.reason,
-            'region': self.region,
-            'issue': self.issue
+    ],
+    "notifications": [
+        {
+            "id": "notif1",
+            "message": "Drone d1 gateway connected.",
+            "type": "info",
+            "read": False,
+            "timestamp": "2025-07-28T09:05:00Z"
+        },
+        {
+            "id": "notif2",
+            "message": "New mission 'Coastal Survey Oman' scheduled.",
+            "type": "success",
+            "read": False,
+            "timestamp": "2025-07-27T18:00:00Z"
+        },
+        {
+            "id": "notif3",
+            "message": "System update successfully applied.",
+            "type": "info",
+            "read": True,
+            "timestamp": "2025-07-20T10:00:00Z"
         }
-
-class UserProfile(db.Model): # New Model for User Profile
-    __tablename__ = 'user_profiles'
-    id = Column(Integer, primary_key=True)
-    firebase_uid = Column(String(128), unique=True, nullable=False) # Link to Firebase Auth UID
-    name = Column(String(100), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    profile_picture_url = Column(String(500))
-    total_flights = Column(Integer, default=0)
-    total_flight_time_hours = Column(Float, default=0.0)
-    average_flight_time_hours = Column(Float, default=0.0)
-    # Add other user-specific fields as needed
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'firebaseUid': self.firebase_uid,
-            'name': self.name,
-            'email': self.email,
-            'profilePicture': self.profile_picture_url,
-            'totalFlights': self.total_flights,
-            'totalFlightTime': f"{int(self.total_flight_time_hours)}h {int((self.total_flight_time_hours * 60) % 60)}m",
-            'averageFlightTime': f"{int(self.average_flight_time_hours)}h {int((self.average_flight_time_hours * 60) % 60)}m",
-        }
-
-
-# --- In-memory cache for active gateway SIDs (not stored in DB) ---
-drone_gateway_sids = {}
-
-# --- Helper function for notifications (now uses SQLAlchemy) ---
-def add_notification(message, type='info'):
-    """Adds a new notification to the database and emits it to connected frontends."""
-    try:
-        new_notification = Notification(
-            message=message,
-            type=type,
-            timestamp=datetime.now(timezone.utc)
-        )
-        db.session.add(new_notification)
-        db.session.commit()
-        notif_dict = new_notification.to_dict()
-        print(f"Notification added to DB: {message} with ID {notif_dict['id']}")
-        socketio.emit('new_notification', notif_dict, room='frontend_clients')
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding notification to database: {e}")
-
-# --- WebSocket Event Handlers ---
-@socketio.on('connect')
-def handle_connect():
-    print(f"Client connected: {request.sid}")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print(f"Client disconnected: {request.sid}")
-    for drone_id, sid in list(drone_gateway_sids.items()):
-        if sid == request.sid:
-            del drone_gateway_sids[drone_id]
-            print(f"Gateway for drone {drone_id} disconnected.")
-            add_notification(f"Drone {drone_id} gateway disconnected.", 'alert')
+    ],
+    "connected_drones": ["d1"],
+    "live_telemetry": {
+        "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859, "longitude": 58.4059, "status": "flying"},
+        "d2": {"altitude": 0, "speed": 0, "battery_percent": 90, "latitude": 24.0000, "longitude": 57.0000, "status": "landed"},
+        "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000, "longitude": 56.0000, "status": "maintenance"},
+    }
+}
+# --- Helper Functions ---
+def find_item_by_id(item_list, item_id):
+    """Finds an item in a list by its 'id' key."""
+    return next((item for item in item_list if item["id"] == item_id), None)
+def update_item_by_id(item_list, item_id, new_data):
+    """Updates an item in a list by its 'id' key and returns the updated item."""
+    for i, item in enumerate(item_list):
+        if item["id"] == item_id:
+            item.update(new_data)
+            return item
+    return None
+def delete_item_by_id(item_list, item_id):
+    """Deletes an item from a list by its 'id' key."""
+    initial_len = len(item_list)
+    updated_list = [item for item in item_list if item["id"] != item_id]
+    if len(updated_list) < initial_len:
+        return updated_list, True
+    return item_list, False
+def get_current_user_from_request():
+    auth_token = request.headers.get('X-Auth-Token')
+    if auth_token == "mock-jwt-token-123":
+        return db["users"]["user1"] # Admin user
+    elif auth_token == "mock-jwt-token-user":
+        return db["users"]["user2"] # Regular user
+    return None
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = get_current_user_from_request()
+        if current_user is None:
+            return jsonify({"error": "Authentication required"}), 401
+        # Store user in Flask's global context if needed for the request
+        request.current_user = current_user
+        return f(*args, **kwargs)
+    return decorated_function
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = get_current_user_from_request()
+        if current_user is None:
+            return jsonify({"error": "Authentication required"}), 401
+        if current_user.get("role") != "admin":
+            return jsonify({"error": "Admin access required"}), 403
+        request.current_user = current_user # Store for use in endpoint
+        return f(*args, **kwargs)
+    return decorated_function
+# --- Authentication Endpoint ---
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    # Find user by username
+    user_found = None
+    for user_id, user_data in db["users"].items():
+        if user_data["username"] == username:
+            user_found = user_data
             break
-    leave_room(request.sid, 'frontend_clients')
-
-@socketio.on('register_as_gateway')
-def register_gateway(data):
-    drone_id = data.get('drone_id')
-    if drone_id:
-        drone_gateway_sids[drone_id] = request.sid
-        join_room(drone_id)
-        print(f"Gateway for drone {drone_id} registered with SID: {request.sid}")
-        add_notification(f"Drone {drone_id} gateway connected.", 'info')
-        # Optional: Update drone status to 'Online' in DB here
-        with app.app_context():
-            drone = Drone.query.get(drone_id)
-            if drone:
-                drone.status = 'Online'
-                db.session.commit()
-                socketio.emit('drone_status_change', {'drone_id': drone_id, 'status': 'Online'}) # Emit status change
-    else:
-        print(f"Invalid registration from {request.sid}: missing drone_id")
-
-@socketio.on('register_as_frontend')
-def register_frontend():
-    join_room('frontend_clients')
-    print(f"Frontend client registered with SID: {request.sid}")
-    try:
-        notifications = Notification.query.order_by(Notification.timestamp.desc()).limit(50).all()
-        initial_notifications = [n.to_dict() for n in notifications]
-        emit('initial_notifications', initial_notifications)
-    except Exception as e:
-        print(f"Error fetching initial notifications from DB: {e}")
-
-@socketio.on('telemetry_update')
-def handle_telemetry_update(data):
-    drone_id = data.get('drone_id')
-    telemetry = data.get('telemetry')
-    if drone_id and telemetry:
-        try:
-            drone = Drone.query.get(drone_id)
-            if drone:
-                drone.last_telemetry = telemetry
-                drone.last_updated = datetime.now(timezone.utc)
-                db.session.commit()
-                print(f"Received and updated telemetry for {drone_id} in DB: {telemetry}")
-                socketio.emit('drone_telemetry_update', {'drone_id': drone_id, 'telemetry': telemetry}, room='frontend_clients')
-            else:
-                print(f"Drone {drone_id} not found in database. Telemetry not stored.")
-                # Optionally, create the drone entry if it doesn't exist
-                # new_drone = Drone(id=drone_id, name=f"Drone {drone_id}", last_telemetry=telemetry, status='Online')
-                # db.session.add(new_drone)
-                # db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error updating telemetry in DB: {e}")
-    else:
-        print(f"Invalid telemetry update from {request.sid}: {data}")
-
-@socketio.on('media_captured')
-def handle_media_captured(data):
-    drone_id = data.get('drone_id')
-    media_url = data.get('media_url')
-    media_type = data.get('type')
-    title = data.get('title')
-    description = data.get('description', '')
-    if drone_id and media_url and media_type and title:
-        print(f"Media captured by {drone_id}: {title} ({media_type}) at {media_url}")
-        add_notification(f"New {media_type} captured by Drone {drone_id}: {title}", 'info')
-        try:
-            new_media = Media(
-                drone_id=drone_id,
-                media_url=media_url,
-                type=media_type,
-                title=title,
-                description=description,
-                timestamp=datetime.now(timezone.utc)
-            )
-            db.session.add(new_media)
-            db.session.commit()
-            socketio.emit('new_media_available', new_media.to_dict(), room='frontend_clients')
-            print("Media metadata saved to database.")
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error saving media metadata to database: {e}")
-    else:
-        print(f"Invalid media captured data from {request.sid}: {data}")
-
-@socketio.on('video_stream_ready') # New event to handle stream URL from gateway
-def handle_video_stream_ready(data):
-    drone_id = data.get('drone_id')
-    stream_url = data.get('stream_url')
-    if drone_id and stream_url:
-        print(f"Received video stream URL for {drone_id}: {stream_url}")
-        with app.app_context():
-            drone = Drone.query.get(drone_id)
-            if drone:
-                drone.live_stream_url = stream_url
-                db.session.commit()
-                print(f"Drone {drone_id} live_stream_url updated in DB.")
-                socketio.emit('drone_stream_available', {'drone_id': drone_id, 'stream_url': stream_url}, room='frontend_clients')
-            else:
-                print(f"Drone {drone_id} not found in DB to update stream URL.")
-    else:
-        print(f"Invalid video_stream_ready data: {data}")
-
-# --- REST API Endpoints ---
-@app.route('/api/command_drone/<drone_id>', methods=['POST'])
-def command_drone(drone_id):
-    command_data = request.json
-    if not command_data or 'command' not in command_data:
-        return jsonify({"error": "Invalid command data"}), 400
-
-    gateway_sid = drone_gateway_sids.get(drone_id)
-
-    if gateway_sid:
-        socketio.emit('drone_command', command_data, room=gateway_sid)
-        print(f"Command '{command_data['command']}' sent to drone {drone_id} (via gateway {gateway_sid})")
-        add_notification(f"Command '{command_data['command']}' sent to Drone {drone_id}.", 'info')
-        return jsonify({"status": "Command sent", "drone_id": drone_id, "command": command_data['command']}), 200
-    else:
-        print(f"No active gateway found for drone {drone_id}")
-        add_notification(f"Failed to send command to Drone {drone_id}: Gateway offline.", 'alert')
-        return jsonify({"error": f"No active gateway found for drone {drone_id}"}), 404
-
-@app.route('/api/notifications', methods=['GET'])
-def get_notifications_api():
-    try:
-        notifications = Notification.query.order_by(Notification.timestamp.desc()).all()
-        return jsonify([n.to_dict() for n in notifications]), 200
-    except Exception as e:
-        print(f"Error fetching notifications from DB: {e}")
-        return jsonify({"error": "Failed to fetch notifications"}), 500
-
-@app.route('/api/notifications/mark_read/<int:notif_id>', methods=['POST'])
-def mark_notification_read(notif_id):
-    try:
-        notif = Notification.query.get(notif_id)
-        if notif:
-            notif.read = True
-            db.session.commit()
-            socketio.emit('notification_updated', notif.to_dict(), room='frontend_clients')
-            return jsonify({"status": "Notification marked as read"}), 200
-        return jsonify({"error": "Notification not found"}), 404
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error marking notification {notif_id} as read: {e}")
-        return jsonify({"error": "Failed to mark notification as read"}), 500
-
-@app.route('/api/notifications/delete/<int:notif_id>', methods=['DELETE'])
-def delete_notification_api(notif_id):
-    try:
-        notif = Notification.query.get(notif_id)
-        if notif:
-            db.session.delete(notif)
-            db.session.commit()
-            socketio.emit('notification_deleted', {'id': notif_id}, room='frontend_clients')
-            return jsonify({"status": "Notification deleted"}), 200
-        return jsonify({"error": "Notification not found"}), 404
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting notification {notif_id}: {e}")
-        return jsonify({"error": "Failed to delete notification"}), 500
-
+    if user_found and user_found["password"] == password:
+        # In a real app, generate a JWT with user_id and role
+        # For this demo, we'll return different tokens for admin/user
+        token = "mock-jwt-token-123" if user_found["role"] == "admin" else "mock-jwt-token-user"
+        user_response = user_found.copy()
+        user_response.pop("password", None) # Don't send password to frontend
+        return jsonify({"message": "Login successful", "token": token, "user": user_response}), 200
+    return jsonify({"error": "Invalid credentials"}), 401
+# --- Admin-Specific API Endpoints (Protected) ---
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def get_all_users():
+    users_list = []
+    for user_id, user_data in db["users"].items():
+        user_copy = user_data.copy()
+        user_copy.pop("password", None) # Never send passwords
+        users_list.append(user_copy)
+    return jsonify(list(users_list)), 200 # Convert dict_values to list
+@app.route('/api/admin/users', methods=['POST'])
+@admin_required
+def create_user():
+    data = request.json
+    new_user_id = str(uuid.uuid4())
+    new_user = {
+        "id": new_user_id,
+        "username": data.get("username"),
+        "password": data.get("password"), # In real app, hash this!
+        "name": data.get("name"),
+        "email": data.get("email"),
+        "profilePicture": data.get("profilePicture", "https://placehold.co/150x150/random/random?text=New+User"),
+        "totalFlights": data.get("totalFlights", 0),
+        "totalFlightTime": data.get("totalFlightTime", "0h"),
+        "averageFlightTime": data.get("averageFlightTime", "0h"),
+        "role": data.get("role", "user") # Default to 'user' if not specified
+    }
+    if not new_user["username"] or not new_user["password"] or not new_user["name"]:
+        return jsonify({"error": "Username, password, and name are required"}), 400
+    # Check if username already exists
+    for user_id, user_data in db["users"].items():
+        if user_data["username"] == new_user["username"]:
+            return jsonify({"error": "Username already exists"}), 409 # Conflict
+    db["users"][new_user_id] = new_user
+    user_response = new_user.copy()
+    user_response.pop("password", None)
+    return jsonify(user_response), 201
+@app.route('/api/admin/users/<string:user_id>', methods=['PUT'])
+@admin_required
+def update_user(user_id):
+    data = request.json
+    user = db["users"].get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    # Prevent changing own role if not admin (more complex logic for self-management)
+    # For simplicity, admin can change any user's role.
+    user.update(data)
+    # If password is in data, it means it's being updated (in real app, hash it)
+    user_response = user.copy()
+    user_response.pop("password", None)
+    return jsonify(user_response), 200
+@app.route('/api/admin/users/<string:user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    if user_id not in db["users"]:
+        return jsonify({"error": "User not found"}), 404
+    if user_id == request.current_user["id"]: # Prevent admin from deleting themselves
+        return jsonify({"error": "Cannot delete your own admin account"}), 403
+    del db["users"][user_id]
+    return jsonify({"message": "User deleted"}), 204
+# --- General API Endpoints (Can be protected with @login_required if needed) ---
+# Drones
 @app.route('/api/drones', methods=['GET'])
+# @login_required # Uncomment to protect
 def get_drones():
-    try:
-        drones = Drone.query.all()
-        return jsonify([d.to_dict() for d in drones]), 200
-    except Exception as e:
-        print(f"Error fetching drones: {e}")
-        return jsonify({"error": "Failed to fetch drones"}), 500
-
+    return jsonify(db["drones"]), 200
 @app.route('/api/drones', methods=['POST'])
+# @login_required
 def add_drone():
     data = request.json
-    if not data or 'id' not in data or 'name' not in data:
-        return jsonify({"error": "Missing drone ID or Name"}), 400
-    try:
-        new_drone = Drone(
-            id=data['id'],
-            name=data['name'],
-            status=data.get('status', 'Offline'),
-            battery=data.get('battery', 0),
-            location=data.get('location', 'Unknown'),
-
-            last_flight=datetime.fromisoformat(data['last_flight'].replace('Z', '+00:00')) if data.get('last_flight') else None,
-            flight_hours=data.get('flight_hours', 0.0)
-        )
-        db.session.add(new_drone)
-        db.session.commit()
-        return jsonify(new_drone.to_dict()), 201
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding drone: {e}")
-        return jsonify({"error": "Failed to add drone", "details": str(e)}), 500
-
-@app.route('/api/drones/<string:drone_id>', methods=['PUT']) # New PUT endpoint for drones
+    new_drone = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "model": data.get("model"),
+        "manufacturer": data.get("manufacturer"),
+        "uniqueId": data.get("uniqueId"),
+        "status": data.get("status", "Available"),
+        "lastLocation": data.get("lastLocation", "N/A"),
+        "flightHours": data.get("flightHours", 0.0),
+        "payloadCapacity": data.get("payloadCapacity", 0.0),
+        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Drone').replace(' ', '+')}"),
+        "type": "Drone",
+        "maintenanceHistory": data.get("maintenanceHistory", []),
+    }
+    db["drones"].append(new_drone)
+    return jsonify(new_drone), 201
+@app.route('/api/drones/<string:drone_id>', methods=['GET'])
+# @login_required
+def get_drone(drone_id):
+    drone = find_item_by_id(db["drones"], drone_id)
+    if drone:
+        return jsonify(drone), 200
+    return jsonify({"error": "Drone not found"}), 404
+@app.route('/api/drones/<string:drone_id>', methods=['PUT'])
+# @login_required
 def update_drone(drone_id):
     data = request.json
-    try:
-        drone = Drone.query.get(drone_id)
-        if not drone:
-            return jsonify({"error": "Drone not found"}), 404
-
-        # Update fields if provided in request data
-        drone.name = data.get('name', drone.name)
-        drone.status = data.get('status', drone.status)
-        drone.battery = data.get('battery', drone.battery)
-        drone.location = data.get('location', drone.location)
-        if 'last_flight' in data:
-            drone.last_flight = datetime.fromisoformat(data['last_flight'].replace('Z', '+00:00')) if data['last_flight'] else None
-        drone.flight_hours = data.get('flight_hours', drone.flight_hours)
-        drone.last_telemetry = data.get('last_telemetry', drone.last_telemetry) # For telemetry updates
-        drone.live_stream_url = data.get('live_stream_url', drone.live_stream_url) # For stream URL updates
-        drone.last_updated = datetime.now(timezone.utc) # Update timestamp
-
-        db.session.commit()
-        return jsonify(drone.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating drone {drone_id}: {e}")
-        return jsonify({"error": "Failed to update drone", "details": str(e)}), 500
-
-@app.route('/api/drones/<string:drone_id>', methods=['DELETE']) # New DELETE endpoint for drones
+    updated_drone = update_item_by_id(db["drones"], drone_id, data)
+    if updated_drone:
+        return jsonify(updated_drone), 200
+    return jsonify({"error": "Drone not found"}), 404
+@app.route('/api/drones/<string:drone_id>', methods=['DELETE'])
+# @login_required
 def delete_drone(drone_id):
-    try:
-        drone = Drone.query.get(drone_id)
-        if not drone:
-            return jsonify({"error": "Drone not found"}), 404
-        db.session.delete(drone)
-        db.session.commit()
-        return jsonify({"status": "Drone deleted"}), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting drone {drone_id}: {e}")
-        return jsonify({"error": "Failed to delete drone", "details": str(e)}), 500
-
-
-@app.route('/api/missions', methods=['GET'])
-def get_missions():
-    try:
-        missions = Mission.query.all()
-        return jsonify([m.to_dict() for m in missions]), 200
-    except Exception as e:
-        print(f"Error fetching missions: {e}")
-        return jsonify({"error": "Failed to fetch missions"}), 500
-
-@app.route('/api/missions', methods=['POST'])
-def add_mission(): # Renamed from get_missions to add_mission for clarity
+    global db
+    new_drones_list, success = delete_item_by_id(db["drones"], drone_id)
+    if success:
+        db["drones"] = new_drones_list
+        return jsonify({"message": "Drone deleted"}), 204
+    return jsonify({"error": "Drone not found"}), 404
+# Ground Stations
+@app.route('/api/ground_stations', methods=['GET'])
+# @login_required
+def get_ground_stations():
+    return jsonify(db["ground_stations"]), 200
+@app.route('/api/ground_stations', methods=['POST'])
+# @login_required
+def add_ground_station():
     data = request.json
-    if not data or 'name' not in data or 'drone_id' not in data:
-        return jsonify({"error": "Missing mission name or drone ID"}), 400
-    try:
-        new_mission = Mission(
-            id=data.get('id', str(random.randint(100000, 999999))), # Generate ID if not provided
-            name=data['name'],
-            status=data.get('status', 'Scheduled'),
-            drone_id=data['drone_id'],
-            start_time=datetime.fromisoformat(data['start_time'].replace('Z', '+00:00')) if data.get('start_time') else None,
-            end_time=datetime.fromisoformat(data['end_time'].replace('Z', '+00:00')) if data.get('end_time') else None,
-            progress=data.get('progress', 0),
-            details=data.get('details', ''),
-            waypoints=data.get('waypoints', 0),
-            area=data.get('area', ''),
-            payload=data.get('payload', '')
-        )
-        db.session.add(new_mission)
-        db.session.commit()
-        return jsonify(new_mission.to_dict()), 201
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding mission: {e}")
-        return jsonify({"error": "Failed to add mission", "details": str(e)}), 500
-
-@app.route('/api/missions/<string:mission_id>', methods=['PUT']) # New PUT endpoint for missions
+    new_gs = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "model": data.get("model"),
+        "manufacturer": data.get("manufacturer"),
+        "uniqueId": data.get("uniqueId"),
+        "status": data.get("status", "Available"),
+        "coverageArea": data.get("coverageArea", "N/A"),
+        "powerSource": data.get("powerSource", "N/A"),
+        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Ground+Station').replace(' ', '+')}"),
+        "type": "Ground Station",
+        "maintenanceHistory": data.get("maintenanceHistory", []),
+    }
+    db["ground_stations"].append(new_gs)
+    return jsonify(new_gs), 201
+@app.route('/api/ground_stations/<string:gs_id>', methods=['GET'])
+# @login_required
+def get_ground_station(gs_id):
+    gs = find_item_by_id(db["ground_stations"], gs_id)
+    if gs:
+        return jsonify(gs), 200
+    return jsonify({"error": "Ground Station not found"}), 404
+@app.route('/api/ground_stations/<string:gs_id>', methods=['PUT'])
+# @login_required
+def update_ground_station(gs_id):
+    data = request.json
+    updated_gs = update_item_by_id(db["ground_stations"], gs_id, data)
+    if updated_gs:
+        return jsonify(updated_gs), 200
+    return jsonify({"error": "Ground Station not found"}), 404
+@app.route('/api/ground_stations/<string:gs_id>', methods=['DELETE'])
+# @login_required
+def delete_ground_station(gs_id):
+    global db
+    new_gs_list, success = delete_item_by_id(db["ground_stations"], gs_id)
+    if success:
+        db["ground_stations"] = new_gs_list
+        return jsonify({"message": "Ground Station deleted"}), 204
+    return jsonify({"error": "Ground Station not found"}), 404
+# Equipment
+@app.route('/api/equipment', methods=['GET'])
+# @login_required
+def get_equipment():
+    return jsonify(db["equipment"]), 200
+@app.route('/api/equipment', methods=['POST'])
+# @login_required
+def add_equipment():
+    data = request.json
+    new_eq = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "model": data.get("model"),
+        "manufacturer": data.get("manufacturer"),
+        "uniqueId": data.get("uniqueId"),
+        "status": data.get("status", "Available"),
+        "equipmentType": data.get("equipmentType", "General"),
+        "compatibility": data.get("compatibility", "N/A"),
+        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Equipment').replace(' ', '+')}"),
+        "type": "Equipment",
+        "maintenanceHistory": data.get("maintenanceHistory", []),
+    }
+    db["equipment"].append(new_eq)
+    return jsonify(new_eq), 201
+@app.route('/api/equipment/<string:eq_id>', methods=['GET'])
+# @login_required
+def get_single_equipment(eq_id):
+    eq = find_item_by_id(db["equipment"], eq_id)
+    if eq:
+        return jsonify(eq), 200
+    return jsonify({"error": "Equipment not found"}), 404
+@app.route('/api/equipment/<string:eq_id>', methods=['PUT'])
+# @login_required
+def update_equipment(eq_id):
+    data = request.json
+    updated_eq = update_item_by_id(db["equipment"], eq_id, data)
+    if updated_eq:
+        return jsonify(updated_eq), 200
+    return jsonify({"error": "Equipment not found"}), 404
+@app.route('/api/equipment/<string:eq_id>', methods=['DELETE'])
+# @login_required
+def delete_equipment(eq_id):
+    global db
+    new_eq_list, success = delete_item_by_id(db["equipment"], eq_id)
+    if success:
+        db["equipment"] = new_eq_list
+        return jsonify({"message": "Equipment deleted"}), 204
+    return jsonify({"error": "Equipment not found"}), 404
+# Batteries
+@app.route('/api/batteries', methods=['GET'])
+# @login_required
+def get_batteries():
+    return jsonify(db["batteries"]), 200
+@app.route('/api/batteries', methods=['POST'])
+# @login_required
+def add_battery():
+    data = request.json
+    new_bat = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "model": data.get("model"),
+        "manufacturer": data.get("manufacturer"),
+        "uniqueId": data.get("uniqueId"),
+        "status": data.get("status", "Available"),
+        "capacity": data.get("capacity", 0),
+        "cycleCount": data.get("cycleCount", 0),
+        "lastCharged": data.get("lastCharged", ""),
+        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Battery').replace(' ', '+')}"),
+        "type": "Battery",
+        "maintenanceHistory": data.get("maintenanceHistory", []),
+    }
+    db["batteries"].append(new_bat)
+    return jsonify(new_bat), 201
+@app.route('/api/batteries/<string:bat_id>', methods=['GET'])
+# @login_required
+def get_battery(bat_id):
+    bat = find_item_by_id(db["batteries"], bat_id)
+    if bat:
+        return jsonify(bat), 200
+    return jsonify({"error": "Battery not found"}), 404
+@app.route('/api/batteries/<string:bat_id>', methods=['PUT'])
+# @login_required
+def update_battery(bat_id):
+    data = request.json
+    updated_bat = update_item_by_id(db["batteries"], bat_id, data)
+    if updated_bat:
+        return jsonify(updated_bat), 200
+    return jsonify({"error": "Battery not found"}), 404
+@app.route('/api/batteries/<string:bat_id>', methods=['DELETE'])
+# @login_required
+def delete_battery(bat_id):
+    global db
+    new_bat_list, success = delete_item_by_id(db["batteries"], bat_id)
+    if success:
+        db["batteries"] = new_bat_list
+        return jsonify({"message": "Battery deleted"}), 204
+    return jsonify({"error": "Battery not found"}), 404
+# Missions
+@app.route('/api/missions', methods=['GET'])
+# @login_required
+def get_missions():
+    return jsonify(db["missions"]), 200
+@app.route('/api/missions', methods=['POST'])
+# @login_required
+def add_mission():
+    data = request.json
+    new_mission = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "drone_id": data.get("drone_id"),
+        "start_time": data.get("start_time"),
+        "end_time": data.get("end_time"),
+        "details": data.get("details"),
+        "status": data.get("status", "Scheduled"),
+        "progress": data.get("progress", 0)
+    }
+    db["missions"].append(new_mission)
+    return jsonify(new_mission), 201
+@app.route('/api/missions/<string:mission_id>', methods=['GET'])
+# @login_required
+def get_mission(mission_id):
+    mission = find_item_by_id(db["missions"], mission_id)
+    if mission:
+        return jsonify(mission), 200
+    return jsonify({"error": "Mission not found"}), 404
+@app.route('/api/missions/<string:mission_id>', methods=['PUT'])
+# @login_required
 def update_mission(mission_id):
     data = request.json
-    try:
-        mission = Mission.query.get(mission_id)
-        if not mission:
-            return jsonify({"error": "Mission not found"}), 404
-
-        mission.name = data.get('name', mission.name)
-        mission.status = data.get('status', mission.status)
-        mission.drone_id = data.get('drone_id', mission.drone_id)
-        if 'start_time' in data:
-            mission.start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00')) if data['start_time'] else None
-        if 'end_time' in data:
-            mission.end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00')) if data['end_time'] else None
-        mission.progress = data.get('progress', mission.progress)
-        mission.details = data.get('details', mission.details)
-        mission.waypoints = data.get('waypoints', mission.waypoints)
-        mission.area = data.get('area', mission.area)
-        mission.payload = data.get('payload', mission.payload)
-
-        db.session.commit()
-        return jsonify(mission.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating mission {mission_id}: {e}")
-        return jsonify({"error": "Failed to update mission", "details": str(e)}), 500
-
-@app.route('/api/missions/<string:mission_id>', methods=['DELETE']) # New DELETE endpoint for missions
+    updated_mission = update_item_by_id(db["missions"], mission_id, data)
+    if updated_mission:
+        return jsonify(updated_mission), 200
+    return jsonify({"error": "Mission not found"}), 404
+@app.route('/api/missions/<string:mission_id>', methods=['DELETE'])
+# @login_required
 def delete_mission(mission_id):
-    try:
-        mission = Mission.query.get(mission_id)
-        if not mission:
-            return jsonify({"error": "Mission not found"}), 404
-        db.session.delete(mission)
-        db.session.commit()
-        return jsonify({"status": "Mission deleted"}), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting mission {mission_id}: {e}")
-        return jsonify({"error": "Failed to delete mission", "details": str(e)}), 500
-
-
+    global db
+    new_missions_list, success = delete_item_by_id(db["missions"], mission_id)
+    if success:
+        db["missions"] = new_missions_list
+        return jsonify({"message": "Mission deleted"}), 204
+    return jsonify({"error": "Mission not found"}), 404
+# Media
 @app.route('/api/media', methods=['GET'])
+# @login_required
 def get_media():
-    try:
-        media_items = Media.query.order_by(Media.timestamp.desc()).all()
-        return jsonify([m.to_dict() for m in media_items]), 200
-    except Exception as e:
-        print(f"Error fetching media: {e}")
-        return jsonify({"error": "Failed to fetch media"}), 500
-
+    return jsonify(db["media"]), 200
 @app.route('/api/media', methods=['POST'])
-def add_media(): # Renamed from get_media to add_media for clarity
+# @login_required
+def add_media():
     data = request.json
-    if not data or 'drone_id' not in data or 'media_url' not in data:
-        return jsonify({"error": "Missing drone ID or media URL"}), 400
-    try:
-        new_media = Media(
-            drone_id=data['drone_id'],
-            media_url=data['media_url'],
-            type=data.get('type', 'image'),
-            title=data.get('title', 'Untitled Media'),
-            description=data.get('description', ''),
-            timestamp=datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00')) if data.get('timestamp') else datetime.now(timezone.utc)
-        )
-        db.session.add(new_media)
-        db.session.commit()
-        return jsonify(new_media.to_dict()), 201
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding media: {e}")
-        return jsonify({"error": "Failed to add media", "details": str(e)}), 500
-
-@app.route('/api/media/<int:media_id>', methods=['PUT']) # New PUT endpoint for media
+    new_media = {
+        "id": str(uuid.uuid4()),
+        "title": data.get("title"),
+        "type": data.get("type"),
+        "url": data.get("url"),
+        "thumbnail": data.get("thumbnail"),
+        "droneId": data.get("drone_id"),
+        "missionId": data.get("mission_id"),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+        "gps": data.get("gps", "N/A"),
+        "tags": data.get("tags", []),
+        "description": data.get("description", ""),
+        "date": datetime.date.today().isoformat()
+    }
+    db["media"].append(new_media)
+    socketio.emit('new_media_available', new_media)
+    return jsonify(new_media), 201
+@app.route('/api/media/<string:media_id>', methods=['GET'])
+# @login_required
+def get_single_media(media_id):
+    media_item = find_item_by_id(db["media"], media_id)
+    if media_item:
+        return jsonify(media_item), 200
+    return jsonify({"error": "Media item not found"}), 404
+@app.route('/api/media/<string:media_id>', methods=['PUT'])
+# @login_required
 def update_media(media_id):
     data = request.json
-    try:
-        media = Media.query.get(media_id)
-        if not media:
-            return jsonify({"error": "Media not found"}), 404
-
-        media.drone_id = data.get('drone_id', media.drone_id)
-        media.media_url = data.get('media_url', media.media_url)
-        media.type = data.get('type', media.type)
-        media.title = data.get('title', media.title)
-        media.description = data.get('description', media.description)
-        if 'timestamp' in data:
-            media.timestamp = datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00')) if data['timestamp'] else None
-
-        db.session.commit()
-        return jsonify(media.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating media {media_id}: {e}")
-        return jsonify({"error": "Failed to update media", "details": str(e)}), 500
-
-@app.route('/api/media/<int:media_id>', methods=['DELETE']) # New DELETE endpoint for media
+    if 'tags' in data and isinstance(data['tags'], str):
+        data['tags'] = [tag.strip() for tag in data['tags'].split(',') if tag.strip()]
+    updated_media = update_item_by_id(db["media"], media_id, data)
+    if updated_media:
+        return jsonify(updated_media), 200
+    return jsonify({"error": "Media item not found"}), 404
+@app.route('/api/media/<string:media_id>', methods=['DELETE'])
+# @login_required
 def delete_media(media_id):
-    try:
-        media = Media.query.get(media_id)
-        if not media:
-            return jsonify({"error": "Media not found"}), 404
-        db.session.delete(media)
-        db.session.commit()
-        return jsonify({"status": "Media deleted"}), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting media {media_id}: {e}")
-        return jsonify({"error": "Failed to delete media", "details": str(e)}), 500
-
-
-@app.route('/api/maintenance_parts', methods=['GET'])
-def get_maintenance_parts():
-    try:
-        parts = MaintenancePart.query.all()
-        return jsonify([p.to_dict() for p in parts]), 200
-    except Exception as e:
-        print(f"Error fetching maintenance parts: {e}")
-        return jsonify({"error": "Failed to fetch maintenance parts"}), 500
-
-@app.route('/api/maintenance_parts', methods=['POST'])
-def add_maintenance_part(): # Renamed for clarity
+    global db
+    new_media_list, success = delete_item_by_id(db["media"], media_id)
+    if success:
+        db["media"] = new_media_list
+        return jsonify({"message": "Media item deleted"}), 204
+    return jsonify({"error": "Media item not found"}), 404
+# Files
+@app.route('/api/files', methods=['GET'])
+# @login_required
+def get_files():
+    return jsonify(db["files"]), 200
+@app.route('/api/files', methods=['POST'])
+# @login_required
+def add_file():
     data = request.json
-    if not data or 'name' not in data:
-        return jsonify({"error": "Missing part name"}), 400
-    try:
-        new_part = MaintenancePart(
-            name=data['name'],
-            status=data.get('status', 'Available'),
-            last_maintenance=datetime.fromisoformat(data['last_maintenance'].replace('Z', '+00:00')) if data.get('last_maintenance') else None,
-            next_maintenance=datetime.fromisoformat(data['next_maintenance'].replace('Z', '+00:00')) if data.get('next_maintenance') else None
-        )
-        db.session.add(new_part)
-        db.session.commit()
-        return jsonify(new_part.to_dict()), 201
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding maintenance part: {e}")
-        return jsonify({"error": "Failed to add maintenance part", "details": str(e)}), 500
-
-@app.route('/api/maintenance_parts/<int:part_id>', methods=['PUT']) # New PUT endpoint
-def update_maintenance_part(part_id):
+    new_file = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "type": data.get("type"),
+        "url": data.get("url"),
+        "category": data.get("category"),
+        "uploadDate": datetime.date.today().isoformat(),
+        "description": data.get("description", ""),
+        "size": data.get("size", f"{random.randint(1, 10)}MB")
+    }
+    db["files"].append(new_file)
+    return jsonify(new_file), 201
+@app.route('/api/files/<string:file_id>', methods=['GET'])
+# @login_required
+def get_file(file_id):
+    file_item = find_item_by_id(db["files"], file_id)
+    if file_item:
+        return jsonify(file_item), 200
+    return jsonify({"error": "File not found"}), 404
+@app.route('/api/files/<string:file_id>', methods=['PUT'])
+# @login_required
+def update_file(file_id):
     data = request.json
-    try:
-        part = MaintenancePart.query.get(part_id)
-        if not part:
-            return jsonify({"error": "Maintenance part not found"}), 404
-
-        part.name = data.get('name', part.name)
-        part.status = data.get('status', part.status)
-        if 'last_maintenance' in data:
-            part.last_maintenance = datetime.fromisoformat(data['last_maintenance'].replace('Z', '+00:00')) if data['last_maintenance'] else None
-        if 'next_maintenance' in data:
-            part.next_maintenance = datetime.fromisoformat(data['next_maintenance'].replace('Z', '+00:00')) if data['next_maintenance'] else None
-
-        db.session.commit()
-        return jsonify(part.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating maintenance part {part_id}: {e}")
-        return jsonify({"error": "Failed to update maintenance part", "details": str(e)}), 500
-
-@app.route('/api/maintenance_parts/<int:part_id>', methods=['DELETE']) # New DELETE endpoint
-def delete_maintenance_part(part_id):
-    try:
-        part = MaintenancePart.query.get(part_id)
-        if not part:
-            return jsonify({"error": "Maintenance part not found"}), 404
-        db.session.delete(part)
-        db.session.commit()
-        return jsonify({"status": "Maintenance part deleted"}), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting maintenance part {part_id}: {e}")
-        return jsonify({"error": "Failed to delete maintenance part", "details": str(e)}), 500
-
-
+    updated_file = update_item_by_id(db["files"], file_id, data)
+    if updated_file:
+        return jsonify(updated_file), 200
+    return jsonify({"error": "File not found"}), 404
+@app.route('/api/files/<string:file_id>', methods=['DELETE'])
+# @login_required
+def delete_file(file_id):
+    global db
+    new_files_list, success = delete_item_by_id(db["files"], file_id)
+    if success:
+        db["files"] = new_files_list
+        return jsonify({"message": "File deleted"}), 204
+    return jsonify({"error": "File not found"}), 404
+# Checklists
+@app.route('/api/checklists', methods=['GET'])
+# @login_required
+def get_checklists():
+    return jsonify(db["checklists"]), 200
+@app.route('/api/checklists', methods=['POST'])
+# @login_required
+def add_checklist():
+    data = request.json
+    new_checklist = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "description": data.get("description", ""),
+        "items": data.get("items", []),
+        "type": data.get("type", "template"),
+        "dateCompleted": data.get("dateCompleted"),
+        "completedBy": data.get("completedBy"),
+        "completionNotes": data.get("completionNotes")
+    }
+    db["checklists"].append(new_checklist)
+    return jsonify(new_checklist), 201
+@app.route('/api/checklists/<string:checklist_id>', methods=['GET'])
+# @login_required
+def get_checklist(checklist_id):
+    checklist = find_item_by_id(db["checklists"], checklist_id)
+    if checklist:
+        return jsonify(checklist), 200
+    return jsonify({"error": "Checklist not found"}), 404
+@app.route('/api/checklists/<string:checklist_id>', methods=['PUT'])
+# @login_required
+def update_checklist(checklist_id):
+    data = request.json
+    updated_checklist = update_item_by_id(db["checklists"], checklist_id, data)
+    if updated_checklist:
+        return jsonify(updated_checklist), 200
+    return jsonify({"error": "Checklist not found"}), 404
+@app.route('/api/checklists/<string:checklist_id>', methods=['DELETE'])
+# @login_required
+def delete_checklist(checklist_id):
+    global db
+    new_checklists_list, success = delete_item_by_id(db["checklists"], checklist_id)
+    if success:
+        db["checklists"] = new_checklists_list
+        return jsonify({"message": "Checklist deleted"}), 204
+    return jsonify({"error": "Checklist not found"}), 404
+# Tags
+@app.route('/api/tags', methods=['GET'])
+# @login_required
+def get_tags():
+    return jsonify(db["tags"]), 200
+@app.route('/api/tags', methods=['POST'])
+# @login_required
+def add_tag():
+    data = request.json
+    new_tag = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "description": data.get("description", "")
+    }
+    db["tags"].append(new_tag)
+    return jsonify(new_tag), 201
+@app.route('/api/tags/<string:tag_id>', methods=['GET'])
+# @login_required
+def get_tag(tag_id):
+    tag = find_item_by_id(db["tags"], tag_id)
+    if tag:
+        return jsonify(tag), 200
+    return jsonify({"error": "Tag not found"}), 404
+@app.route('/api/tags/<string:tag_id>', methods=['PUT'])
+# @login_required
+def update_tag(tag_id):
+    data = request.json
+    updated_tag = update_item_by_id(db["tags"], tag_id, data)
+    if updated_tag:
+        return jsonify(updated_tag), 200
+    return jsonify({"error": "Tag not found"}), 404
+@app.route('/api/tags/<string:tag_id>', methods=['DELETE'])
+# @login_required
+def delete_tag(tag_id):
+    global db
+    new_tags_list, success = delete_item_by_id(db["tags"], tag_id)
+    if success:
+        db["tags"] = new_tags_list
+        return jsonify({"message": "Tag deleted"}), 204
+    return jsonify({"error": "Tag not found"}), 404
+# Incidents
 @app.route('/api/incidents', methods=['GET'])
+# @login_required
 def get_incidents():
-    try:
-        incidents = Incident.query.order_by(Incident.timestamp.desc()).all()
-        return jsonify([i.to_dict() for i in incidents]), 200
-    except Exception as e:
-        print(f"Error fetching incidents: {e}")
-        return jsonify({"error": "Failed to fetch incidents"}), 500
-
+    return jsonify(db["incidents"]), 200
 @app.route('/api/incidents', methods=['POST'])
-def add_incident(): # Renamed for clarity
+# @login_required
+def add_incident():
     data = request.json
-    if not data or 'message' not in data:
-        return jsonify({"error": "Missing incident message"}), 400
-    try:
-        new_incident = Incident(
-            type=data.get('type', 'info'),
-            message=data['message'],
-            timestamp=datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00')) if data.get('timestamp') else datetime.now(timezone.utc),
-            resolved=data.get('resolved', False),
-            when=datetime.fromisoformat(data['when'].replace('Z', '+00:00')) if data.get('when') else None,
-            place=data.get('place', ''),
-            drone=data.get('drone', ''),
-            reason=data.get('reason', ''),
-            region=data.get('region', ''),
-            issue=data.get('issue', '')
-        )
-        db.session.add(new_incident)
-        db.session.commit()
-        return jsonify(new_incident.to_dict()), 201
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error adding incident: {e}")
-        return jsonify({"error": "Failed to add incident", "details": str(e)}), 500
-
-@app.route('/api/incidents/<int:incident_id>', methods=['PUT']) # New PUT endpoint
+    new_incident = {
+        "id": str(uuid.uuid4()),
+        "type": data.get("type", "info"),
+        "message": data.get("message"),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+        "resolved": data.get("resolved", False)
+    }
+    db["incidents"].append(new_incident)
+    socketio.emit('new_notification', new_incident)
+    return jsonify(new_incident), 201
+@app.route('/api/incidents/<string:incident_id>', methods=['GET'])
+# @login_required
+def get_incident(incident_id):
+    incident = find_item_by_id(db["incidents"], incident_id)
+    if incident:
+        return jsonify(incident), 200
+    return jsonify({"error": "Incident not found"}), 404
+@app.route('/api/incidents/<string:incident_id>', methods=['PUT'])
+# @login_required
 def update_incident(incident_id):
     data = request.json
-    try:
-        incident = Incident.query.get(incident_id)
-        if not incident:
-            return jsonify({"error": "Incident not found"}), 404
-
-        incident.type = data.get('type', incident.type)
-        incident.message = data.get('message', incident.message)
-        if 'timestamp' in data:
-            incident.timestamp = datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00')) if data['timestamp'] else None
-        incident.resolved = data.get('resolved', incident.resolved)
-        if 'when' in data:
-            incident.when = datetime.fromisoformat(data['when'].replace('Z', '+00:00')) if data['when'] else None
-        incident.place = data.get('place', incident.place)
-        incident.drone = data.get('drone', incident.drone)
-        incident.reason = data.get('reason', incident.reason)
-        incident.region = data.get('region', incident.region)
-        incident.issue = data.get('issue', incident.issue)
-
-        db.session.commit()
-        return jsonify(incident.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating incident {incident_id}: {e}")
-        return jsonify({"error": "Failed to update incident", "details": str(e)}), 500
-
-@app.route('/api/incidents/<int:incident_id>', methods=['DELETE']) # New DELETE endpoint
+    updated_incident = update_item_by_id(db["incidents"], incident_id, data)
+    if updated_incident:
+        return jsonify(updated_incident), 200
+    return jsonify({"error": "Incident not found"}), 40
+@app.route('/api/incidents/<string:incident_id>', methods=['DELETE'])
+# @login_required
 def delete_incident(incident_id):
-    try:
-        incident = Incident.query.get(incident_id)
-        if not incident:
-            return jsonify({"error": "Incident not found"}), 404
-        db.session.delete(incident)
-        db.session.commit()
-        return jsonify({"status": "Incident deleted"}), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error deleting incident {incident_id}: {e}")
-        return jsonify({"error": "Failed to delete incident", "details": str(e)}), 500
-
-# --- User Profile Endpoints ---
-# These are conceptual. You'd link them to Firebase Auth UIDs in a real app.
+    global db
+    new_incidents_list, success = delete_item_by_id(db["incidents"], incident_id)
+    if success:
+        db["incidents"] = new_incidents_list
+        return jsonify({"message": "Incident deleted"}), 204
+    return jsonify({"error": "Incident not found"}), 404
+# Maintenance Parts
+@app.route('/api/maintenance_parts', methods=['GET'])
+# @login_required
+def get_maintenance_parts():
+    return jsonify(db["maintenance_parts"]), 200
+@app.route('/api/maintenance_parts', methods=['POST'])
+# @login_required
+def add_maintenance_part():
+    data = request.json
+    new_part = {
+        "id": str(uuid.uuid4()),
+        "name": data.get("name"),
+        "status": data.get("status", "Available"),
+        "lastMaintenance": data.get("last_maintenance", datetime.date.today().isoformat() + 'Z'),
+        "nextMaintenance": data.get("next_maintenance", "")
+    }
+    db["maintenance_parts"].append(new_part)
+    return jsonify(new_part), 201
+@app.route('/api/maintenance_parts/<string:part_id>', methods=['GET'])
+# @login_required
+def get_maintenance_part(part_id):
+    part = find_item_by_id(db["maintenance_parts"], part_id)
+    if part:
+        return jsonify(part), 200
+    return jsonify({"error": "Maintenance part not found"}), 404
+@app.route('/api/maintenance_parts/<string:part_id>', methods=['PUT'])
+# @login_required
+def update_maintenance_part(part_id):
+    data = request.json
+    updated_part = update_item_by_id(db["maintenance_parts"], part_id, data)
+    if updated_part:
+        return jsonify(updated_part), 200
+    return jsonify({"error": "Maintenance part not found"}), 404
+@app.route('/api/maintenance_parts/<string:part_id>', methods=['DELETE'])
+# @login_required
+def delete_maintenance_part(part_id):
+    global db
+    new_parts_list, success = delete_item_by_id(db["maintenance_parts"], part_id)
+    if success:
+        db["maintenance_parts"] = new_parts_list
+        return jsonify({"message": "Maintenance part deleted"}), 204
+    return jsonify({"error": "Maintenance part not found"}), 404
+# Notifications
+@app.route('/api/notifications', methods=['GET'])
+# @login_required
+def get_notifications():
+    sorted_notifications = sorted(db["notifications"], key=lambda x: x.get('timestamp', ''), reverse=True)
+    return jsonify(sorted_notifications), 200
+@app.route('/api/notifications/mark_read/<string:notification_id>', methods=['POST'])
+# @login_required
+def mark_notification_read(notification_id):
+    notif_to_update = find_item_by_id(db["notifications"], notification_id)
+    if notif_to_update:
+        notif_to_update["read"] = True
+        socketio.emit('notification_updated', notif_to_update)
+        return jsonify(notif_to_update), 200
+    return jsonify({"error": "Notification not found"}), 404
+@app.route('/api/notifications/mark_all_read', methods=['POST'])
+# @login_required
+def mark_all_notifications_read():
+    for notif in db["notifications"]:
+        notif["read"] = True
+    socketio.emit('notifications_updated', db["notifications"])
+    return jsonify({"message": "All notifications marked as read"}), 200
+@app.route('/api/notifications/delete/<string:notification_id>', methods=['DELETE'])
+# @login_required
+def delete_notification(notification_id):
+    global db
+    new_notifications_list, success = delete_item_by_id(db["notifications"], notification_id)
+    if success:
+        db["notifications"] = new_notifications_list
+        socketio.emit('notification_deleted', {"id": notification_id})
+        return jsonify({"message": "Notification deleted"}), 204
+    return jsonify({"error": "Notification not found"}), 404
+@app.route('/api/notifications/delete_read', methods=['DELETE'])
+# @login_required
+def delete_all_read_notifications():
+    global db
+    initial_len = len(db["notifications"])
+    db["notifications"] = [n for n in db["notifications"] if not n["read"]]
+    if len(db["notifications"]) < initial_len:
+        socketio.emit('notifications_updated', db["notifications"])
+        return jsonify({"message": "All read notifications deleted"}), 204
+    return jsonify({"message": "No read notifications to delete"}), 200
+# User Profile
 @app.route('/api/user/profile', methods=['GET'])
-def get_user_profile():
-    # In a real app, you'd get user_id from auth token
-    # For now, return a dummy or first user profile
-    try:
-        user_profile = UserProfile.query.first() # Get the first user for simplicity
-        if user_profile:
-            return jsonify(user_profile.to_dict()), 200
-        return jsonify({"error": "User profile not found"}), 404
-    except Exception as e:
-        print(f"Error fetching user profile: {e}")
-        return jsonify({"error": "Failed to fetch user profile", "details": str(e)}), 500
+# @login_required
 
+def get_user_profile():
+    current_user_data = get_current_user_from_request()
+    if current_user_data:
+        user_copy = current_user_data.copy()
+        user_copy.pop("password", None)
+        return jsonify(user_copy), 200
+    return jsonify({"error": "User profile not found"}), 404
 @app.route('/api/user/profile', methods=['PUT'])
+# @login_required
 def update_user_profile():
     data = request.json
-    try:
-        user_profile = UserProfile.query.first() # Get the first user for simplicity
-        if not user_profile:
-            # If no user profile exists, create one (e.g., linked to a dummy UID)
-            user_profile = UserProfile(
-                firebase_uid="dummy_firebase_uid_123", # Replace with actual UID from auth
-                name=data.get('name', 'New User'),
-                email=data.get('email', 'new@example.com')
-            )
-            db.session.add(user_profile)
-        
-        user_profile.name = data.get('name', user_profile.name)
-        user_profile.email = data.get('email', user_profile.email)
-        user_profile.profile_picture_url = data.get('profile_picture_url', user_profile.profile_picture_url)
-        # Update flight stats if sent from frontend (e.g., from missions completion)
-        user_profile.total_flights = data.get('total_flights', user_profile.total_flights)
-        user_profile.total_flight_time_hours = data.get('total_flight_time_hours', user_profile.total_flight_time_hours)
-        user_profile.average_flight_time_hours = data.get('average_flight_time_hours', user_profile.average_flight_time_hours)
-
-        db.session.commit()
-        return jsonify(user_profile.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating user profile: {e}")
-        return jsonify({"error": "Failed to update user profile", "details": str(e)}), 500
-
+    current_user_data = get_current_user_from_request()
+    if current_user_data:
+        user_id = current_user_data["id"]
+        user = db["users"].get(user_id)
+        if user:
+            if 'name' in data:
+                user['name'] = data['name']
+            if 'email' in data:
+                user['email'] = data['email']
+            user_copy = user.copy()
+            user_copy.pop("password", None)
+            return jsonify(user_copy), 200
+    return jsonify({"error": "User not found"}), 404
 @app.route('/api/user/change_password', methods=['POST'])
+# @login_required
 def change_password():
     data = request.json
     current_password = data.get('current_password')
     new_password = data.get('new_password')
-    # In a real app, you'd verify current_password against hashed password in DB
-    # and then hash and save the new_password.
-    # For this example, we just simulate success.
-    if current_password and new_password and new_password != current_password:
-        return jsonify({"status": "Password changed successfully (simulated)"}), 200
-    return jsonify({"error": "Failed to change password (simulated)"}), 400
-
+    current_user_data = get_current_user_from_request()
+    if current_user_data and current_user_data["password"] == current_password:
+        user_id = current_user_data["id"]
+        db["users"][user_id]["password"] = new_password
+        return jsonify({"message": "Password changed successfully"}), 200
+    return jsonify({"error": "Incorrect current password or user not found"}), 401
 @app.route('/api/user/profile_picture', methods=['POST'])
+
+# @login_required
+
 def update_profile_picture():
     data = request.json
-    profile_picture_url = data.get('profile_picture_url')
-    if not profile_picture_url:
-        return jsonify({"error": "Missing profile picture URL"}), 400
-    try:
-        user_profile = UserProfile.query.first()
-        if not user_profile:
-            # Create a dummy profile if none exists
-            user_profile = UserProfile(firebase_uid="dummy_firebase_uid_123", name="New User", email="new@example.com")
-            db.session.add(user_profile)
-            db.session.commit() # Commit to get an ID if new
-        
-        user_profile.profile_picture_url = profile_picture_url
-        db.session.commit()
-        return jsonify(user_profile.to_dict()), 200
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error updating profile picture: {e}")
-        return jsonify({"error": "Failed to update profile picture", "details": str(e)}), 500
-
-
-@app.route('/api/drone_status/<string:drone_id>', methods=['GET'])
-def get_drone_status(drone_id):
-    try:
-        drone_doc = Drone.query.get(drone_id)
-        if drone_doc:
-            return jsonify({"drone_id": drone_id, "telemetry": drone_doc.last_telemetry, "liveStreamUrl": drone_doc.live_stream_url}), 200
-        return jsonify({"error": "Drone not found or offline"}), 404
-    except Exception as e:
-        print(f"Error fetching drone status for {drone_id} from DB: {e}")
-        return jsonify({"error": "Failed to fetch drone status", "details": str(e)}), 500
-
+    new_url = data.get('profile_picture_url')
+    current_user_data = get_current_user_from_request()
+    if current_user_data:
+        user_id = current_user_data["id"]
+        db["users"][user_id]['profilePicture'] = new_url
+        user_copy = db["users"][user_id].copy()
+        user_copy.pop("password", None)
+        return jsonify(user_copy), 200
+    return jsonify({"error": "User not found"}), 404
 @app.route('/api/connected_drones', methods=['GET'])
-def get_connected_drones():
-    return jsonify(list(drone_gateway_sids.keys())), 200
+def get_connected_drones_api():
+    return jsonify(db["connected_drones"]), 200
+@app.route('/api/command_drone/<string:drone_id>', methods=['POST'])
+def command_drone(drone_id):
+    data = request.json
+    command = data.get('command')
+    params = data.get('params', {})
+    if drone_id not in db["connected_drones"]:
+        return jsonify({"error": f"Drone {drone_id} is not connected."}), 400
+    print(f"Received command for drone {drone_id}: {command} with params {params}")
+    current_telemetry = db["live_telemetry"].get(drone_id, {})
+    drone_in_db = next((d for d in db["drones"] if d["id"] == drone_id), None)
+    if command == "takeoff":
+        current_telemetry["altitude"] = params.get("altitude", 10)
+        current_telemetry["status"] = "flying"
+        if drone_in_db: drone_in_db["status"] = "Deployed"
+        socketio.emit('new_notification', {
+            "id": str(uuid.uuid4()), "message": f"Drone {drone_id} took off to {current_telemetry['altitude']}m.",
+            "type": "info", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+        })
+    elif command == "land":
+        current_telemetry["altitude"] = 0
+        current_telemetry["status"] = "landed"
+        if drone_in_db: drone_in_db["status"] = "Available"
+        socketio.emit('new_notification', {
+            "id": str(uuid.uuid4()), "message": f"Drone {drone_id} has landed.",
+            "type": "info", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+        })
+    elif command == "take_photo":
+        new_media_id = str(uuid.uuid4())
+        new_media_item = {
+            "id": new_media_id,
+            "title": f"Photo from {drone_id} ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})",
+            "type": "image",
+            "url": f"https://picsum.photos/600/400?random={random.randint(1,1000)}",
+            "thumbnail": f"https://picsum.photos/300/200?random={random.randint(1,1000)}",
+            "droneId": drone_id,
+            "missionId": "N/A",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+            "gps": f"{current_telemetry.get('latitude', 'N/A')}° N, {current_telemetry.get('longitude', 'N/A')}° E",
+            "tags": ["captured", "drone", "photo"],
+            "description": "Captured during live operation.",
+            "date": datetime.date.today().isoformat()
+        }
+        db["media"].append(new_media_item)
+        socketio.emit('new_media_available', new_media_item)
+        socketio.emit('new_notification', {
+            "id": str(uuid.uuid4()), "message": f"New photo captured by drone {drone_id}.",
+            "type": "success", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+        })
+        print(f"New media captured: {new_media_id}")
+    db["live_telemetry"][drone_id] = current_telemetry
+    socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": current_telemetry})
+    return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
 
+@socketio.on('connect')
+def handle_connect():
+    print(f"Client connected: {request.sid}")
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"Client disconnected: {request.sid}")
+@socketio.on('register_as_frontend')
+def register_frontend():
+    print(f"Frontend registered with SID: {request.sid}")
+def simulate_drone_telemetry():
+    while True:
+        for mission in db["missions"]:
+            if mission["status"] == "Active" and mission["drone_id"] not in db["connected_drones"]:
+                db["connected_drones"].append(mission["drone_id"])
+                socketio.emit('new_notification', {
+                    "id": str(uuid.uuid4()),
+                    "message": f"Drone {mission['drone_id']} gateway connected for mission '{mission['name']}'.",
+                    "type": "info",
+                    "read": False,
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+                })
+                for d in db["drones"]:
+                    if d["id"] == mission["drone_id"]:
+                        d["status"] = "Deployed"
+                        break
+            if mission["status"] == "Active" and mission["progress"] < 100:
+                mission["progress"] += random.randint(1, 5)
+                if mission["progress"] >= 100:
+                    mission["progress"] = 100
+                    mission["status"] = "Completed"
+                    socketio.emit('new_notification', {
+                        "id": str(uuid.uuid4()),
+                        "message": f"Mission '{mission['name']}' completed!",
+                        "type": "success",
+                        "read": False,
+                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+                    })
+                    if mission["drone_id"] in db["connected_drones"]:
+                         db["connected_drones"].remove(mission["drone_id"])
+                         socketio.emit('new_notification', {
+                            "id": str(uuid.uuid4()),
+                            "message": f"Drone {mission['drone_id']} gateway disconnected after mission completion.",
+                            "type": "info",
+                            "read": False,
+                            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+                        })
+                         for d in db["drones"]:
+                            if d["id"] == mission["drone_id"]:
+                                d["status"] = "Available"
+                                break
+
+        for drone_id in db["connected_drones"]:
+            telemetry = db["live_telemetry"].get(drone_id, {
+                "altitude": random.uniform(0, 100),
+                "speed": random.uniform(0, 20),
+                "battery_percent": random.randint(20, 100),
+                "latitude": random.uniform(23.5, 23.7),
+                "longitude": random.uniform(58.3, 58.6),
+                "status": "flying"
+            })
+            if telemetry["status"] == "flying":
+                telemetry["altitude"] = max(0, min(150, telemetry["altitude"] + random.uniform(-5, 5)))
+                telemetry["speed"] = max(5, min(25, telemetry["speed"] + random.uniform(-1, 1)))
+                telemetry["battery_percent"] = max(0, telemetry["battery_percent"] - random.uniform(0.5, 1.5))
+            elif telemetry["status"] == "landed":
+                telemetry["altitude"] = 0
+                telemetry["speed"] = 0
+                telemetry["battery_percent"] = min(100, telemetry["battery_percent"] + random.uniform(0.1, 0.5))
+            elif telemetry["status"] == "maintenance":
+                telemetry["altitude"] = 0
+                telemetry["speed"] = 0
+                telemetry["battery_percent"] = 100
+            telemetry["latitude"] = telemetry["latitude"] + random.uniform(-0.0005, 0.0005)
+            telemetry["longitude"] = telemetry["longitude"] + random.uniform(-0.0005, 0.0005)
+
+            for d in db["drones"]:
+                if d["id"] == drone_id:
+
+                    d["status"] = "Deployed" if telemetry["status"] == "flying" else "Available"
+                    d["battery"] = telemetry["battery_percent"]
+                    d["lastLocation"] = f"Lat: {telemetry['latitude']:.4f}, Lng: {telemetry['longitude']:.4f}"
+
+                    break
+
+            if telemetry["battery_percent"] < 15 and not any(inc['message'].startswith(f"Drone {drone_id} battery critical") for inc in db["incidents"]):
+                new_incident = {
+                    "id": str(uuid.uuid4()),
+                    "type": "alert",
+                    "message": f"Drone {drone_id} battery critical ({int(telemetry['battery_percent'])}%). Initiate return to base.",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+                    "resolved": False
+                }
+                db["incidents"].append(new_incident)
+                socketio.emit('new_notification', new_incident)
+                print(f"Emitting new incident: {new_incident['message']}")
+            db["live_telemetry"][drone_id] = telemetry
+            socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": telemetry})
+        time.sleep(2)
+threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        # Add a default user profile if none exists
-        if not UserProfile.query.first():
-            print("Adding initial dummy user profile...")
-            db.session.add(UserProfile(
-                firebase_uid="initial_user_uid", # Placeholder UID
-                name="M Osman",
-                email="m.osman@example.com",
-                profile_picture_url="https://placehold.co/150x150/a78bfa/ffffff?text=Profile",
-                total_flights=150,
-                total_flight_time_hours=250.5,
-                average_flight_time_hours=1.67
-            ))
-            db.session.commit()
-            print("Dummy user profile added.")
 
-        # Add initial dummy data for other models if tables are empty
-        if not Drone.query.first():
-            print("Adding initial dummy data for drones, missions, media, etc...")
-            db.session.add(Drone(id='DRN-SIM-001', name='Simulated Drone 1', status='Offline', battery=0, location='Simulated', flight_hours=0, last_telemetry={}, live_stream_url='http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'))
-            db.session.add(Drone(id='DRN-002', name='SkyWatcher Elite', status='Offline', battery=0, location='Hangar 1', flight_hours=0, last_telemetry={}))
-            db.session.add(Mission(id='m1', name='Site Survey - North Campus', status='Scheduled', drone_id='DRN-001', progress=0, details='Initial survey.', waypoints=10, area='50 acres', payload='RGB Camera', start_time=datetime.now(timezone.utc), end_time=datetime.now(timezone.utc)))
-            db.session.add(Media(drone_id='DRN-SIM-001', media_url='https://placehold.co/600x400/3498db/ffffff?text=Simulated+Video', type='video', title='Initial Test Video', description='First simulated video.', timestamp=datetime.now(timezone.utc)))
-            db.session.add(MaintenancePart(name='Propeller Set A', status='Available', last_maintenance=datetime.now(timezone.utc)))
-            db.session.add(Incident(type='info', message='System startup.', timestamp=datetime.now(timezone.utc), when=datetime.now(timezone.utc), place='HQ', drone='N/A', reason='System Init', region='Global', issue='Startup'))
-            db.session.commit()
-            print("Dummy data added.")
-
-    print("Starting Flask-SocketIO server...")
-    socketio.run(app, debug=True, port=5000, host='0.0.0.0')
+    socketio.run(app, debug=True, port=5000)
