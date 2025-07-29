@@ -17,7 +17,8 @@ CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://19
 
 # --- SocketIO Initialization ---
 socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://192.168.100.113:3000"])
-
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*")
 # --- In-Memory Database (for demonstration purposes) ---
 # NOTE: Data will be reset every time the server restarts.
 # For production, use a proper database (e.g., PostgreSQL, SQLAlchemy).
@@ -836,22 +837,24 @@ def delete_battery(bat_id):
 def get_missions():
     return jsonify(db["missions"]), 200
 
+# In app.py
+
 @app.route('/api/missions', methods=['POST'])
 @login_required
 def add_mission():
-    data = request.json
-    new_mission = {
-        "id": str(uuid.uuid4()),
-        "name": data.get("name"),
-        "drone_id": data.get("drone_id"),
-        "start_time": data.get("start_time"),
-        "end_time": data.get("end_time"),
-        "details": data.get("details"),
-        "status": data.get("status", "Scheduled"),
-        "progress": data.get("progress", 0)
-    }
-    db["missions"].append(new_mission)
-    return jsonify(new_mission), 201
+   data = request.json
+   new_mission = {
+       "id": str(uuid.uuid4()),
+       "name": data.get("name"),
+       "drone_id": data.get("drone_id"),
+       "start_time": data.get("start_time"),
+       "end_time": data.get("end_time"),
+       "details": data.get("details"),
+       "status": data.get("status", "Scheduled"),  # This line is updated
+       "progress": data.get("progress", 0)
+   }
+   db["missions"].append(new_mission)
+   return jsonify(new_mission), 201
 
 @app.route('/api/missions/<string:mission_id>', methods=['GET'])
 @login_required
@@ -898,7 +901,7 @@ def add_media():
         "thumbnail": data.get("thumbnail"),
         "droneId": data.get("droneId"), # Changed from "drone_id"
         "missionId": data.get("missionId"), # Changed from "mission_id"
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z'),
         "gps": data.get("gps", "N/A"),
         "tags": data.get("tags", []),
         "description": data.get("description", ""),
@@ -1325,7 +1328,7 @@ def command_drone(drone_id):
             "thumbnail": f"https://picsum.photos/300x200?random={random.randint(1,1000)}",
             "droneId": drone_id,
             "missionId": "N/A",
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z'),
             "gps": f"{current_telemetry.get('latitude', 'N/A')}, {current_telemetry.get('longitude', 'N/A')}",
             "tags": ["captured", "drone", "photo"],
             "description": "Captured during live operation.",

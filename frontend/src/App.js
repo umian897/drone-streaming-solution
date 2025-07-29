@@ -1,3 +1,4 @@
+
 // src/App.js
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
@@ -2417,6 +2418,8 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
     );
 };
 
+// In src/App.js
+
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
@@ -2424,8 +2427,10 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
         drone_id: '',
         start_time: '',
         end_time: '',
-        details: ''
+        details: '',
+        status: 'Scheduled' // Add status to initial state
     });
+    const [statusFilter, setStatusFilter] = useState('all'); // State for the filter
 
     const onSave = async () => {
         if (!newMission.name || !newMission.drone_id || !newMission.start_time || !newMission.end_time) {
@@ -2437,7 +2442,6 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
             ...newMission,
             start_time: new Date(newMission.start_time).toISOString(),
             end_time: new Date(newMission.end_time).toISOString(),
-            status: 'Scheduled',
             progress: 0,
         };
 
@@ -2445,7 +2449,7 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
 
         if (success) {
             setShowAddModal(false);
-            setNewMission({ name: '', drone_id: '', start_time: '', end_time: '', details: '' });
+            setNewMission({ name: '', drone_id: '', start_time: '', end_time: '', details: '', status: 'Scheduled' });
         }
     };
 
@@ -2458,12 +2462,46 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
         }
     };
 
+    // Filter missions based on the selected status
+    const filteredMissions = missions.filter(mission => {
+        if (statusFilter === 'all') return true;
+        return mission.status === statusFilter;
+    });
+
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
                 <button onClick={() => setShowAddModal(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
                     <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
+                </button>
+            </div>
+
+            {/* Status Filter Buttons */}
+            <div className="flex space-x-2 mb-6 bg-white p-2 rounded-lg shadow-sm w-min">
+                <button
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                >
+                    All
+                </button>
+                <button
+                    onClick={() => setStatusFilter('Active')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Active' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                >
+                    Active
+                </button>
+                <button
+                    onClick={() => setStatusFilter('Scheduled')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Scheduled' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                >
+                    Scheduled
+                </button>
+                 <button
+                    onClick={() => setStatusFilter('Completed')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Completed' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                >
+                    Completed
                 </button>
             </div>
 
@@ -2477,6 +2515,14 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
                                 <option value="">Select a Drone</option>
                                 {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueId})</option>)}
                             </select>
+                            {/* New Status Field in Form */}
+                            <div>
+                                <label className="text-sm">Mission Status</label>
+                                <select value={newMission.status} onChange={e => setNewMission({ ...newMission, status: e.target.value })} className="w-full p-2 border rounded">
+                                    <option value="Scheduled">Scheduled</option>
+                                    <option value="Active">Active</option>
+                                </select>
+                            </div>
                             <div>
                                 <label className="text-sm">Start Time</label>
                                 <input type="datetime-local" value={newMission.start_time} onChange={e => setNewMission({ ...newMission, start_time: e.target.value })} className="w-full p-2 border rounded" />
@@ -2496,7 +2542,8 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {missions.map(mission => (
+                {/* Render the filtered list of missions */}
+                {filteredMissions.map(mission => (
                     <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-lg font-semibold">{mission.name}</h3>
@@ -3053,8 +3100,10 @@ const Sidebar = ({ onLogout, userRole }) => {
     );
 };
 
+// In src/App.js
+
 const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }) => {
-    const navigate = useNavigate();
+    const navigate = useNavigate(); // Hook for navigation
 
     const totalDrones = drones.length;
     const activeMissions = missions.filter(m => m.status === 'Active').length;
@@ -3076,35 +3125,36 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                {/* Card becomes a clickable link */}
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/assets/drones')}>
                     <Drone className="w-12 h-12 text-blue-500" />
                     <div>
                         <p className="text-gray-500 text-sm">Total Drones</p>
                         <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/missions')}>
                     <Rocket className="w-12 h-12 text-green-500" />
                     <div>
                         <p className="text-gray-500 text-sm">Active Missions</p>
                         <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/maintenance')}>
                     <Wrench className="w-12 h-12 text-yellow-500" />
                     <div>
                         <p className="text-gray-500 text-sm">Pending Maintenance</p>
                         <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/incidents')}>
                     <AlertCircle className="w-12 h-12 text-red-500" />
                     <div>
                         <p className="text-gray-500 text-sm">Recent Incidents</p>
                         <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
                     </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/library/media')}>
                     <ImageIcon className="w-12 h-12 text-purple-500" />
                     <div>
                         <p className="text-gray-500 text-sm">Media Captured (Today)</p>
@@ -3532,6 +3582,7 @@ const App = () => {
 
     // Centralized Data State
     const [drones, setDrones] = useState([]);
+    const [users, setUsers] = useState([]); 
     const [groundStations, setGroundStations] = useState([]);
     const [equipment, setEquipment] = useState([]);
     const [batteries, setBatteries] = useState([]);
@@ -3567,54 +3618,61 @@ const App = () => {
     useEffect(() => {
         if (!isAuthenticated || !authToken) return; // Only fetch if authenticated and token exists
 
-        const fetchAllInitialData = async () => {
-            try {
-                const [
-                    dronesData, missionsData, mediaData, incidentsData,
-                    maintenanceData, notifsData, connectedDronesData,
-                    groundStationsData, equipmentData, batteriesData,
-                    filesData, checklistsData, tagsData, userProfileData
-                ] = await Promise.all([
-                    authenticatedApiRequest('/api/drones'),
-                    authenticatedApiRequest('/api/missions'),
-                    authenticatedApiRequest('/api/media'),
-                    authenticatedApiRequest('/api/incidents'),
-                    authenticatedApiRequest('/api/maintenance_parts'),
-                    authenticatedApiRequest('/api/notifications'),
-                    authenticatedApiRequest('/api/connected_drones'),
-                    authenticatedApiRequest('/api/ground_stations'),
-                    authenticatedApiRequest('/api/equipment'),
-                    authenticatedApiRequest('/api/batteries'),
-                    authenticatedApiRequest('/api/files'),
-                    authenticatedApiRequest('/api/checklists'),
-                    authenticatedApiRequest('/api/tags'),
-                    authenticatedApiRequest('/api/user/profile'),
-                ]);
+       const fetchAllInitialData = async () => {
+    try {
+        const apiCalls = [
+            authenticatedApiRequest('/api/drones'),
+            authenticatedApiRequest('/api/missions'),
+            authenticatedApiRequest('/api/media'),
+            authenticatedApiRequest('/api/incidents'),
+            authenticatedApiRequest('/api/maintenance_parts'),
+            authenticatedApiRequest('/api/notifications'),
+            authenticatedApiRequest('/api/connected_drones'),
+            authenticatedApiRequest('/api/ground_stations'),
+            authenticatedApiRequest('/api/equipment'),
+            authenticatedApiRequest('/api/batteries'),
+            authenticatedApiRequest('/api/files'),
+            authenticatedApiRequest('/api/checklists'),
+            authenticatedApiRequest('/api/tags'),
+            authenticatedApiRequest('/api/user/profile'),
+        ];
 
-                setDrones(dronesData);
-                setMissions(missionsData);
-                setMediaItems(mediaData);
-                setIncidents(incidentsData);
-                setMaintenanceParts(maintenanceData);
-                setNotifications(notifsData);
-                setConnectedDrones(connectedDronesData);
-                setGroundStations(groundStationsData);
-                setEquipment(equipmentData);
-                setBatteries(batteriesData);
-                setFiles(filesData);
-                setChecklists(checklistsData);
-                setTags(tagsData);
-                setUserProfile(userProfileData);
+        // If the user is an admin, add the call to fetch all users
+        if (userRole === 'admin') {
+            apiCalls.push(authenticatedApiRequest('/api/admin/users'));
+        }
 
-            } catch (error) {
-                console.error("Error fetching initial data:", error);
-                displayMessage(`Failed to load system data: ${error.message}`, 'error');
-                // If token is invalid or unauthorized, log out
-                if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
-                    handleLogout();
-                }
-            }
-        };
+        const responses = await Promise.all(apiCalls);
+
+        // Assign all the existing data
+        setDrones(responses[0]);
+        setMissions(responses[1]);
+        setMediaItems(responses[2]);
+        setIncidents(responses[3]);
+        setMaintenanceParts(responses[4]);
+        setNotifications(responses[5]);
+        setConnectedDrones(responses[6]);
+        setGroundStations(responses[7]);
+        setEquipment(responses[8]);
+        setBatteries(responses[9]);
+        setFiles(responses[10]);
+        setChecklists(responses[11]);
+        setTags(responses[12]);
+        setUserProfile(responses[13]);
+
+        // If the user is an admin, set the users state from the last API call
+        if (userRole === 'admin') {
+            setUsers(responses[14]);
+        }
+
+    } catch (error) {
+        console.error("Error fetching initial data:", error);
+        displayMessage(`Failed to load system data: ${error.message}`, 'error');
+        if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
+            handleLogout();
+        }
+    }
+};
 
         fetchAllInitialData();
 
@@ -3672,9 +3730,8 @@ const App = () => {
         });
 
         socket.on('new_media_available', media => {
-            const mediaWithDate = { ...media, date: media.timestamp ? new Date(media.timestamp).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10) };
-            // Ensure date is string
-            setMediaItems(prev => [mediaWithDate, ...prev]);
+
+        setMediaItems(prev => [media, ...prev]);
         });
 
 
