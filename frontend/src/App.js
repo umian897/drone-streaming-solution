@@ -8,19 +8,16 @@ import {
     Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, ListChecks, Search,
     Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Mail, Key, Check, Calendar,
     List, Folder,
-    Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square
+    Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square, User // Added User icon for Admin Panel
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 // Make sure AuthPage.js is located at src/pages/auth/AuthPage.js
 import AuthPage from './pages/auth/AuthPage';
 
-// Import the AdminPanel component
-// import AdminPanel from './pages/admin/AdminPanel'; Adjust path if necessary
-
 // --- API CONFIG & HELPER ---
-const API_BASE_URL = 'http://localhost:5000';
-const WEBSOCKET_URL = 'http://localhost:5000';
+const API_BASE_URL = 'http://localhost:5000'; // Matches app.py.pdf
+const WEBSOCKET_URL = 'http://localhost:5000'; // Matches app.py.pdf
 
 const apiRequest = async (endpoint, method = 'GET', body = null, token = null) => {
     const options = {
@@ -730,8 +727,6 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
         const updatedTags = [...(mediaToUpdate.tags || []), newTag];
         const success = await handleUpdateMedia(mediaId, { tags: updatedTags });
         if (success) {
-            // Since handleUpdateMedia already updates the central state, no need to do it again here
-            // The updated media will flow down through props. Just update local selectedMedia if needed.
             setSelectedMedia(prev => ({ ...prev, tags: updatedTags }));
         }
     };
@@ -743,7 +738,6 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
         const updatedTags = (mediaToUpdate.tags || []).filter(tag => tag !== tagToRemove);
         const success = await handleUpdateMedia(mediaId, { tags: updatedTags });
         if (success) {
-            // Same as above, central state update handles it.
             setSelectedMedia(prev => ({ ...prev, tags: updatedTags }));
         }
     };
@@ -2387,7 +2381,8 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     </span>
                 </div>
                 <div className="flex space-x-2">
-                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline ||
+                        !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
                     </button>
                     <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
@@ -2948,7 +2943,8 @@ const Sidebar = ({ onLogout, userRole }) => {
                 <div className="relative">
                     <button
                         onClick={() => toggleDropdown('assets')}
-                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets/drones', '/assets/ground-stations', '/assets/equipment', '/assets/batteries']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets/drones', '/assets/ground-stations', '/assets/equipment', '/assets/batteries']) ?
+                            'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                     >
                         <span className="flex items-center">
                             <Package className="w-5 h-5 mr-3" />
@@ -2978,7 +2974,8 @@ const Sidebar = ({ onLogout, userRole }) => {
                 <div className="relative">
                     <button
                         onClick={() => toggleDropdown('library')}
-                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/library/media', '/library/files', '/library/checklists', '/library/tags']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/library/media', '/library/files', '/library/checklists', '/library/tags']) ?
+                            'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                     >
                         <span className="flex items-center">
                             <Book className="w-5 h-5 mr-3" />
@@ -3008,7 +3005,8 @@ const Sidebar = ({ onLogout, userRole }) => {
                 <div className="relative">
                     <button
                         onClick={() => toggleDropdown('manage')}
-                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/manage/profile-settings', '/manage/incidents', '/manage/maintenance', '/admin-panel']) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
+                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/manage/profile-settings', '/manage/incidents', '/manage/maintenance', '/admin-panel']) ?
+                            'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                     >
                         <span className="flex items-center">
                             <Settings className="w-5 h-5 mr-3" />
@@ -3132,6 +3130,397 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
     );
 };
 
+
+// Admin-Specific Components (now defined within App.js to directly access App's state and handlers)
+// These components wrap the generic ones defined above, passing relevant data and callbacks.
+
+// User Form for Add/Edit (Generic modal form for user data) - kept here as it's admin specific
+const UserForm = ({ title, initialData, onSave, onCancel }) => {
+    const [formData, setFormData] = useState(initialData || {
+        username: '', password: '', name: '', email: '', role: 'user', profilePicture: '',
+        totalFlights: 0, totalFlightTime: "0h", averageFlightTime: "0h"
+    });
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);  // Call the onSave prop with the form data
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                <h3 className="text-xl font-bold mb-4">{title}</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username</label>
+                        <input type="text" id="username" name="username" value={formData.username} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" required />
+                    </div>
+                    {/* Password field only shown when adding a new user */}
+                    {title === "Add New User" && (
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="password" name="password" value={formData.password} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" required />
+                        </div>
+                    )}
+                    <div>
+                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
+                        <input type="text" id="name" name="name" value={formData.name} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" required />
+                    </div>
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    </div>
+                    <div>
+                        <label htmlFor="role" className="block text-sm font-medium text-gray-700">Role</label>
+                        <select id="role" name="role" value={formData.role} onChange={handleChange} className="mt-1 block w-full p-2 border rounded">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="profilePicture" className="block text-sm font-medium text-gray-700">Profile Picture URL</label>
+                        <input type="url" id="profilePicture" name="profilePicture" value={formData.profilePicture} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" placeholder="https://placehold.co/150x150" />
+                    </div>
+                    <div className="flex justify-end gap-4 mt-6">
+                        <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
+const AdminPanelContent = ({
+    displayMessage, authToken,
+    users, handleAddUser, handleUpdateUser, handleDeleteUser, // User specific
+    drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, // Drones
+    groundStations, handleAddGroundStation, handleUpdateGroundStation, handleDeleteGroundStation, // Ground Stations
+    equipment, handleAddEquipment, handleUpdateEquipment, handleDeleteEquipment, // Equipment
+    batteries, handleAddBattery, handleUpdateBattery, handleDeleteBattery, // Batteries
+    missions, handleAddMission, handleDeleteMission, // Missions
+    mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, handleDeleteMedia, // Media
+    files, setFiles, handleAddFile, handleDeleteFile, // Files
+    checklists, setChecklists, handleAddChecklist, handleUpdateChecklist, handleDeleteChecklist, // Checklists
+    tags, setTags, handleAddTag, handleUpdateTag, handleDeleteTag, // Tags
+    incidents, handleAddIncident, handleUpdateIncident, handleDeleteIncident, // Incidents
+    maintenanceParts, setMaintenanceParts, handleAddMaintenancePart, handleUpdateMaintenancePart, handleDeleteMaintenancePart // Maintenance Parts
+}) => {
+    const [activeTab, setActiveTab] = useState('users'); // State to manage active tab
+
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);  // For add/edit user form
+    const [confirmingDeleteUser, setConfirmingDeleteUser] = useState(null);
+
+    // User management specific functions (kept here as they're part of original AdminPanel)
+    const openAddUserModal = () => {
+        setCurrentUser({ username: '', password: '', name: '', email: '', role: 'user', profilePicture: '', totalFlights: 0, totalFlightTime: "0h", averageFlightTime: "0h" });
+        setShowAddModal(true);
+    };
+
+    const openEditUserModal = (user) => {
+        setCurrentUser(user);
+        setShowEditModal(true);
+    };
+
+    const confirmDeleteUser = (user) => {
+        setConfirmingDeleteUser(user);
+    };
+
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+            <h2 className="text-3xl font-bold text-gray-800 mb-6">Admin Panel</h2>
+
+            {/* Tab Navigation */}
+            <div className="mb-6 border-b border-gray-200 overflow-x-auto">
+                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button
+                        onClick={() => setActiveTab('users')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        User Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('drones')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'drones' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Drone Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('groundStations')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'groundStations' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Ground Station Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('equipment')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'equipment' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Equipment Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('batteries')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'batteries' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Battery Management
+                    </button>
+                     <button
+                        onClick={() => setActiveTab('missions')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'missions' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Mission Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('media')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'media' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Media Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('files')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'files' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        File Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('checklists')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'checklists' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Checklist Management
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('tags')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'tags' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Tag Management
+                    </button>
+                     <button
+                        onClick={() => setActiveTab('incidents')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'incidents' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Incident Management
+                    </button>
+                     <button
+                        onClick={() => setActiveTab('maintenanceParts')}
+                        className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'maintenanceParts' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        Maintenance Part Management
+                    </button>
+                </nav>
+            </div>
+
+            {/* Content based on active tab */}
+            {activeTab === 'users' && (
+                <>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-bold text-gray-800">User Management</h3>
+                        <button onClick={openAddUserModal} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                            <PlusCircle className="w-5 h-5 mr-2" /> Add New User
+                        </button>
+                    </div>
+
+                    {users.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+                            <p className="text-gray-500 text-lg">No users found.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-xl shadow-md p-6 flex-1 overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                        <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {users.map(user => (
+                                        <tr key={user.id}>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.name}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                    {user.role}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-xs">{user.id}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <button onClick={() => openEditUserModal(user)} className="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+                                                <button onClick={() => confirmDeleteUser(user)} className="text-red-600 hover:text-red-900">Delete</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {showAddModal && (
+                        <UserForm
+                            title="Add New User"
+                            initialData={currentUser}
+                            onSave={handleAddUser}
+                            onCancel={() => setShowAddModal(false)}
+                        />
+                    )}
+
+                    {showEditModal && currentUser && (
+                        <UserForm
+                            title="Edit User"
+                            initialData={currentUser}
+                            onSave={(updatedData) => handleUpdateUser(currentUser.id, updatedData)}
+                            onCancel={() => setShowEditModal(false)}
+                        />
+                    )}
+
+                    {confirmingDeleteUser && (
+                        <ConfirmationModal
+                            message={`Are you sure you want to delete user "${confirmingDeleteUser.username}"? This action cannot be undone.`}
+                            onConfirm={() => handleDeleteUser(confirmingDeleteUser.id)}
+                            onCancel={() => setConfirmingDeleteUser(null)}
+                        />
+                    )}
+                </>
+            )}
+
+            {activeTab === 'drones' && (
+                <Drones
+                    drones={drones}
+                    handleAddDrone={handleAddDrone}
+                    handleUpdateDrone={handleUpdateDrone}
+                    handleDeleteDrone={handleDeleteDrone}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'groundStations' && (
+                <GroundStations
+                    groundStations={groundStations}
+                    handleAddGS={handleAddGroundStation}
+                    handleUpdateGS={handleUpdateGroundStation}
+                    handleDeleteGS={handleDeleteGroundStation}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'equipment' && (
+                <Equipment
+                    equipment={equipment}
+                    handleAddEquipment={handleAddEquipment}
+                    handleUpdateEquipment={handleUpdateEquipment}
+                    handleDeleteEquipment={handleDeleteEquipment}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'batteries' && (
+                <Batteries
+                    batteries={batteries}
+                    handleAddBattery={handleAddBattery}
+                    handleUpdateBattery={handleUpdateBattery}
+                    handleDeleteBattery={handleDeleteBattery}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'missions' && (
+                <Missions
+                    missions={missions}
+                    drones={drones} // Missions need drone data for dropdown
+                    handleAddMission={handleAddMission}
+                    handleDeleteMission={handleDeleteMission}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'media' && (
+                <Media
+                    mediaItems={mediaItems}
+                    setMediaItems={setMediaItems}
+                    handleAddMedia={handleAddMedia}
+                    handleUpdateMedia={handleUpdateMedia}
+                    handleDeleteMedia={handleDeleteMedia}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'files' && (
+                <Files
+                    files={files}
+                    setFiles={setFiles}
+                    handleAddFile={handleAddFile}
+                    handleDeleteFile={handleDeleteFile}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'checklists' && (
+                <Checklists
+                    checklists={checklists}
+                    setChecklists={setChecklists}
+                    handleAddChecklist={handleAddChecklist}
+                    handleUpdateChecklist={handleUpdateChecklist}
+                    handleDeleteChecklist={handleDeleteChecklist}
+                    displayMessage={displayMessage}
+                />
+            )}
+            {activeTab === 'tags' && (
+                <Tags
+                    tags={tags}
+                    setTags={setTags}
+                    handleAddTag={handleAddTag}
+                    handleUpdateTag={handleUpdateTag}
+                    handleDeleteTag={handleDeleteTag}
+                    displayMessage={displayMessage}
+                />
+            )}
+             {activeTab === 'incidents' && (
+                <IncidentSection
+                    incidents={incidents}
+                    handleAddIncident={handleAddIncident}
+                    handleUpdateIncident={handleUpdateIncident}
+                    handleDeleteIncident={handleDeleteIncident}
+                    displayMessage={displayMessage}
+                />
+            )}
+             {activeTab === 'maintenanceParts' && (
+                <MaintenanceSection
+                    maintenanceParts={maintenanceParts}
+                    setMaintenanceParts={setMaintenanceParts}
+                    displayMessage={displayMessage}
+                />
+            )}
+        </div>
+    );
+};
 
 // --- 7. MAIN APP COMPONENT (The root of your application) ---
 // This component should be the last one defined before the export.
@@ -3283,7 +3672,8 @@ const App = () => {
         });
 
         socket.on('new_media_available', media => {
-            const mediaWithDate = { ...media, date: media.timestamp ? new Date(media.timestamp).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10) }; // Ensure date is string
+            const mediaWithDate = { ...media, date: media.timestamp ? new Date(media.timestamp).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10) };
+            // Ensure date is string
             setMediaItems(prev => [mediaWithDate, ...prev]);
         });
 
@@ -3501,7 +3891,8 @@ const App = () => {
                     <div className="flex-1 flex flex-col">
                         <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
                             <h1 className="text-xl font-semibold">Drone Operations Dashboard</h1>
-                            {message && <div className={`px-4 py-2 rounded text-white text-sm ${messageType === 'success' ? 'bg-green-500' : messageType === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}>{message}</div>}
+                            {message && <div className={`px-4 py-2 rounded text-white text-sm ${messageType === 'success' ? 'bg-green-500' : messageType === 'error' ?
+                                'bg-red-500' : 'bg-blue-500'}`}>{message}</div>}
                         </header>
                         <main className="flex-1 p-6 overflow-y-auto">
                             <Routes>
@@ -3604,13 +3995,34 @@ const App = () => {
                                     displayMessage={displayMessage}
                                 />} />
 
-                                {/* Admin Panel Route - Only visible and accessible if userRole is 'admin' */}
-                                {userRole === 'admin' && (
-                                    <Route
-                                        path="/admin-panel"
-                                        element={<AdminPanel displayMessage={displayMessage} authToken={authToken} />}
-                                    />
-                                )}
+                              {userRole === 'admin' && (
+    <Route
+        path="/admin-panel"
+        element={
+            <AdminPanelContent
+                displayMessage={displayMessage}
+                authToken={authToken}
+                // Pass down all necessary data and their CRUD handlers
+                users={users} // Pass the 'users' state directly from App.js
+                handleAddUser={(userData) => handleAddItem('/api/admin/users', userData, setUsers, 'User')} // Use setUsers directly
+                handleUpdateUser={(id, data) => handleUpdateItem('/api/admin/users', id, data, setUsers, 'User')} // Use setUsers directly
+                handleDeleteUser={(id) => handleDeleteItem('/api/admin/users', id, setUsers, 'user')} // Use setUsers directly
+
+                drones={drones} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone}
+                groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
+                equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
+                batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
+                missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
+                mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
+                files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
+                checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
+                tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
+                incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
+                maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
+            />
+        }
+    />
+)}
 
                                 <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} />} />
                             </Routes>

@@ -1,17 +1,26 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 import uuid
 import datetime
 import random
 import time
 import threading
 from functools import wraps
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
+
+# --- Flask App Initialization ---
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
-socketio = SocketIO(app, cors_allowed_origins="http://localhost:3000")
 
+# --- CORS Configuration ---
+# Allow requests from your React frontend (http://localhost:3000 and the specific IP)
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://192.168.100.113:3000"]}})
 
+# --- SocketIO Initialization ---
+socketio = SocketIO(app, cors_allowed_origins=["http://localhost:3000", "http://192.168.100.113:3000"])
+
+# --- In-Memory Database (for demonstration purposes) ---
+# NOTE: Data will be reset every time the server restarts.
+# For production, use a proper database (e.g., PostgreSQL, SQLAlchemy).
 db = {
     "users": {
         "user1": {
@@ -24,7 +33,7 @@ db = {
             "totalFlights": 150,
             "totalFlightTime": "320h",
             "averageFlightTime": "2.1h",
-            "role": "admin" # NEW: Admin role
+            "role": "admin"
         },
         "user2": {
             "id": "user2",
@@ -36,7 +45,7 @@ db = {
             "totalFlights": 50,
             "totalFlightTime": "80h",
             "averageFlightTime": "1.6h",
-            "role": "user" # NEW: Regular user role
+            "role": "user"
         }
     },
     "drones": [
@@ -55,7 +64,7 @@ db = {
             "maintenanceHistory": [
                 {"date": "2025-06-01", "description": "Annual check-up, firmware update.", "performedBy": "Tech Team A", "cost": 150},
                 {"date": "2025-03-10", "description": "Propeller replacement after minor incident.", "performedBy": "Tech Team B", "cost": 75},
-            ],
+            ]
         },
         {
             "id": "d2",
@@ -69,9 +78,9 @@ db = {
             "payloadCapacity": 1.8,
             "imageUrl": "https://placehold.co/400x300/7ed321/ffffff?text=SkyGuard+S200",
             "type": "Drone",
-            "maintenanceHistory": [
+            "maintenanceHistory":[
                 {"date": "2025-07-05", "description": "Pre-deployment system check.", "performedBy": "Pilot John Doe"},
-            ],
+            ]
         },
         {
             "id": "d3",
@@ -87,7 +96,7 @@ db = {
             "type": "Drone",
             "maintenanceHistory": [
                 {"date": "2025-07-18", "description": "Scheduled 200-hour service and sensor calibration.", "performedBy": "Certified Service"},
-            ],
+            ]
         },
     ],
     "ground_stations": [
@@ -105,7 +114,7 @@ db = {
             "maintenanceHistory": [
                 {"date": "2025-05-20", "description": "System diagnostic and antenna alignment.", "performedBy": "Field Engineer"},
                 {"date": "2024-11-15", "description": "Firmware upgrade and battery replacement.", "performedBy": "Service Partner", "cost": 300},
-            ],
+            ]
         },
         {
             "id": "gs2",
@@ -120,7 +129,7 @@ db = {
             "type": "Ground Station",
             "maintenanceHistory": [
                 {"date": "2025-07-01", "description": "Routine power supply check.", "performedBy": "Local Team"},
-            ],
+            ]
         },
     ],
     "equipment": [
@@ -137,7 +146,7 @@ db = {
             "type": "Equipment",
             "maintenanceHistory": [
                 {"date": "2025-04-01", "description": "Lens cleaning and sensor calibration.", "performedBy": "Internal Tech"},
-            ],
+            ]
         },
         {
             "id": "eq2",
@@ -152,7 +161,7 @@ db = {
             "type": "Equipment",
             "maintenanceHistory": [
                 {"date": "2025-07-10", "description": "Thermal array recalibration.", "performedBy": "Manufacturer Service", "cost": 250},
-            ],
+            ]
         },
     ],
     "batteries": [
@@ -170,7 +179,7 @@ db = {
             "type": "Battery",
             "maintenanceHistory": [
                 {"date": "2025-06-15", "description": "Routine cycle check, cell balancing.", "performedBy": "Internal Tech"},
-            ],
+            ]
         },
         {
             "id": "bat2",
@@ -186,7 +195,7 @@ db = {
             "type": "Battery",
             "maintenanceHistory": [
                 {"date": "2025-07-12", "description": "Capacity degradation test, cell replacement.", "performedBy": "Specialized Repair", "cost": 100},
-            ],
+            ]
         },
     ],
     "missions": [
@@ -209,7 +218,7 @@ db = {
             "details": "Infrared inspection of critical pipeline sections.",
             "status": "Active",
             "progress": 75
-        }
+        },
     ],
     "media": [
         {
@@ -263,7 +272,8 @@ db = {
             "url": "https://www.africau.edu/images/default/sample.pdf",
             "category": "Flight Manuals",
             "uploadDate": "2025-01-10",
-            "description": "Official flight manual for Drone X1 model."
+            "description": "Official flight manual for Drone X1 model.",
+            "size": "5 MB"
         },
         {
             "id": "f2",
@@ -273,16 +283,18 @@ db = {
             "category": "Safety Protocols",
             "uploadDate": "2025-03-05",
             "description": "Updated safety guidelines for all drone operations.",
+            "size": "2 MB"
         },
         {
             "id": "f3",
             "name": "Incident Report Template",
             "type": "DOCX",
-            "url": "https://docs.google.com/document/d/1B_e0dY0_q_s_J_h_2_x_f_3_y_4_z_5_a_6_b_7_c_8_d_9_e_0",
+            "url": "https://docs.google.com/document/d/1B_e0dY0_q_sJh2xf3y4z5a6b7c8d9_e/edit?usp=sharing", # A public Google Docs template link
             "category": "Templates",
             "uploadDate": "2025-06-20",
             "description": "Standard template for reporting operational incidents.",
-        },
+            "size": "0.1 MB"
+        }
     ],
     "checklists": [
         {
@@ -296,7 +308,7 @@ db = {
                 {"id": "item4", "text": "GPS signal acquired", "completed": False, "notes": ""},
                 {"id": "item5", "text": "Clearance for takeoff", "completed": False, "notes": ""},
             ],
-            "type": "template",
+            "type": "template", # "template" or "completed"
             "dateCompleted": None,
             "completedBy": None,
             "completionNotes": None,
@@ -328,11 +340,11 @@ db = {
             "dateCompleted": "2025-07-10",
             "completedBy": "Tech John",
             "completionNotes": "All routine checks passed, minor dust cleaning performed."
-        },
+        }
     ],
     "tags": [
         {"id": "t1", "name": "Security", "description": "Tags related to security operations."},
-        {"id": "t2", "name": "Inspection", "description": "Tags for inspection missions and media."},
+        {"id": "t2", "name": "Inspection", "description": "Tags for inspection missions and media"},
         {"id": "t3", "name": "Maintenance", "description": "Tags for maintenance activities and assets."},
         {"id": "t4", "name": "Aerial Survey", "description": "Tags for general aerial surveying."},
     ],
@@ -378,7 +390,7 @@ db = {
         },
         {
             "id": "notif2",
-            "message": "New mission 'Coastal Survey Oman' scheduled.",
+            "message": "New mission Coastal Survey Oman scheduled.",
             "type": "success",
             "read": False,
             "timestamp": "2025-07-27T18:00:00Z"
@@ -389,19 +401,21 @@ db = {
             "type": "info",
             "read": True,
             "timestamp": "2025-07-20T10:00:00Z"
-        }
+        },
     ],
-    "connected_drones": ["d1"],
+    "connected_drones": ["d1"], # List of currently active drone IDs
     "live_telemetry": {
         "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859, "longitude": 58.4059, "status": "flying"},
         "d2": {"altitude": 0, "speed": 0, "battery_percent": 90, "latitude": 24.0000, "longitude": 57.0000, "status": "landed"},
         "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000, "longitude": 56.0000, "status": "maintenance"},
     }
 }
+
 # --- Helper Functions ---
 def find_item_by_id(item_list, item_id):
     """Finds an item in a list by its 'id' key."""
     return next((item for item in item_list if item["id"] == item_id), None)
+
 def update_item_by_id(item_list, item_id, new_data):
     """Updates an item in a list by its 'id' key and returns the updated item."""
     for i, item in enumerate(item_list):
@@ -409,6 +423,7 @@ def update_item_by_id(item_list, item_id, new_data):
             item.update(new_data)
             return item
     return None
+
 def delete_item_by_id(item_list, item_id):
     """Deletes an item from a list by its 'id' key."""
     initial_len = len(item_list)
@@ -416,24 +431,30 @@ def delete_item_by_id(item_list, item_id):
     if len(updated_list) < initial_len:
         return updated_list, True
     return item_list, False
+
+# --- Authentication and Authorization Decorators ---
 def get_current_user_from_request():
+    """Mocks user retrieval based on X-Auth-Token header."""
     auth_token = request.headers.get('X-Auth-Token')
-    if auth_token == "mock-jwt-token-123":
-        return db["users"]["user1"] # Admin user
-    elif auth_token == "mock-jwt-token-user":
-        return db["users"]["user2"] # Regular user
+    if auth_token == "mock-jwt-token-123": # Admin token
+        return db["users"]["user1"]
+    elif auth_token == "mock-jwt-token-user": # Regular user token
+        return db["users"]["user2"]
     return None
+
 def login_required(f):
+    """Decorator to ensure user is logged in."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         current_user = get_current_user_from_request()
         if current_user is None:
             return jsonify({"error": "Authentication required"}), 401
-        # Store user in Flask's global context if needed for the request
-        request.current_user = current_user
+        request.current_user = current_user # Store user in Flask's global context for the request
         return f(*args, **kwargs)
     return decorated_function
+
 def admin_required(f):
+    """Decorator to ensure user is an admin."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         current_user = get_current_user_from_request()
@@ -444,26 +465,69 @@ def admin_required(f):
         request.current_user = current_user # Store for use in endpoint
         return f(*args, **kwargs)
     return decorated_function
+
 # --- Authentication Endpoint ---
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    # Find user by username
+
     user_found = None
     for user_id, user_data in db["users"].items():
         if user_data["username"] == username:
             user_found = user_data
             break
-    if user_found and user_found["password"] == password:
-        # In a real app, generate a JWT with user_id and role
+
+    if user_found and user_found["password"] == password: # In a real app, check hashed password!
         # For this demo, we'll return different tokens for admin/user
         token = "mock-jwt-token-123" if user_found["role"] == "admin" else "mock-jwt-token-user"
         user_response = user_found.copy()
         user_response.pop("password", None) # Don't send password to frontend
         return jsonify({"message": "Login successful", "token": token, "user": user_response}), 200
     return jsonify({"error": "Invalid credentials"}), 401
+
+# --- Public Registration Endpoint ---
+@app.route('/api/register', methods=['POST', 'OPTIONS']) # Added OPTIONS for CORS preflight
+def register_user():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    name = data.get('name')
+    email = data.get('email')
+
+    if not username or not password or not name or not email:
+        return jsonify({"error": "Username, password, name, and email are required"}), 400
+
+    # Check if username already exists
+    for user_id, user_data in db["users"].items():
+        if user_data["username"] == username:
+            return jsonify({"error": "Username already exists"}), 409 # Conflict
+
+    new_user_id = str(uuid.uuid4())
+    new_user = {
+        "id": new_user_id,
+        "username": username,
+        "password": password,  # DANGER! Hash this in production!
+        "name": name,
+        "email": email,
+        "profilePicture": f"https://placehold.co/150x150/random/random?text={username[0].upper()}", # Basic placeholder
+        "totalFlights": 0,
+        "totalFlightTime": "0h",
+        "averageFlightTime": "0h",
+        "role": "user" # Default role for new registrations
+    }
+
+    db["users"][new_user_id] = new_user
+    user_response = new_user.copy()
+    user_response.pop("password", None) # Don't send password back
+
+    # Optionally, automatically log in the user after registration
+    # Return a token and user object similar to the login endpoint
+    token = "mock-jwt-token-user" # Or a new token for new users if applicable
+    return jsonify({"message": "Registration successful", "token": token, "user": user_response}), 201
+
+
 # --- Admin-Specific API Endpoints (Protected) ---
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
@@ -473,7 +537,8 @@ def get_all_users():
         user_copy = user_data.copy()
         user_copy.pop("password", None) # Never send passwords
         users_list.append(user_copy)
-    return jsonify(list(users_list)), 200 # Convert dict_values to list
+    return jsonify(list(users_list)), 200 # Convert dict values to list
+
 @app.route('/api/admin/users', methods=['POST'])
 @admin_required
 def create_user():
@@ -485,22 +550,26 @@ def create_user():
         "password": data.get("password"), # In real app, hash this!
         "name": data.get("name"),
         "email": data.get("email"),
-        "profilePicture": data.get("profilePicture", "https://placehold.co/150x150/random/random?text=New+User"),
-        "totalFlights": data.get("totalFlights", 0),
-        "totalFlightTime": data.get("totalFlightTime", "0h"),
-        "averageFlightTime": data.get("averageFlightTime", "0h"),
+        "profilePicture": data.get("profilePicture", f"https://placehold.co/150x150/random/random?text=New+User"),
+        "totalFlights": 0,
+        "totalFlightTime": "0h",
+        "averageFlightTime": "0h",
         "role": data.get("role", "user") # Default to 'user' if not specified
     }
+
     if not new_user["username"] or not new_user["password"] or not new_user["name"]:
         return jsonify({"error": "Username, password, and name are required"}), 400
+
     # Check if username already exists
     for user_id, user_data in db["users"].items():
         if user_data["username"] == new_user["username"]:
             return jsonify({"error": "Username already exists"}), 409 # Conflict
+
     db["users"][new_user_id] = new_user
     user_response = new_user.copy()
     user_response.pop("password", None)
     return jsonify(user_response), 201
+
 @app.route('/api/admin/users/<string:user_id>', methods=['PUT'])
 @admin_required
 def update_user(user_id):
@@ -508,13 +577,32 @@ def update_user(user_id):
     user = db["users"].get(user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
-    # Prevent changing own role if not admin (more complex logic for self-management)
-    # For simplicity, admin can change any user's role.
-    user.update(data)
-    # If password is in data, it means it's being updated (in real app, hash it)
+
+    # Update only allowed fields or hash password if provided
+    if 'username' in data:
+        user['username'] = data['username']
+    if 'password' in data and data['password']: # Only update if password is provided
+        user['password'] = data['password'] # In real app, hash this!
+    if 'name' in data:
+        user['name'] = data['name']
+    if 'email' in data:
+        user['email'] = data['email']
+    if 'profilePicture' in data:
+        user['profilePicture'] = data['profilePicture']
+    if 'totalFlights' in data:
+        user['totalFlights'] = data['totalFlights']
+    if 'totalFlightTime' in data:
+        user['totalFlightTime'] = data['totalFlightTime']
+    if 'averageFlightTime' in data:
+        user['averageFlightTime'] = data['averageFlightTime']
+    if 'role' in data:
+        user['role'] = data['role']
+
+
     user_response = user.copy()
     user_response.pop("password", None)
     return jsonify(user_response), 200
+
 @app.route('/api/admin/users/<string:user_id>', methods=['DELETE'])
 @admin_required
 def delete_user(user_id):
@@ -522,16 +610,20 @@ def delete_user(user_id):
         return jsonify({"error": "User not found"}), 404
     if user_id == request.current_user["id"]: # Prevent admin from deleting themselves
         return jsonify({"error": "Cannot delete your own admin account"}), 403
+
     del db["users"][user_id]
     return jsonify({"message": "User deleted"}), 204
-# --- General API Endpoints (Can be protected with @login_required if needed) ---
+
+# --- General API Endpoints (Protected with login_required) ---
+
 # Drones
 @app.route('/api/drones', methods=['GET'])
-# @login_required # Uncomment to protect
+@login_required # Uncomment to protect
 def get_drones():
     return jsonify(db["drones"]), 200
+
 @app.route('/api/drones', methods=['POST'])
-# @login_required
+@login_required
 def add_drone():
     data = request.json
     new_drone = {
@@ -550,37 +642,42 @@ def add_drone():
     }
     db["drones"].append(new_drone)
     return jsonify(new_drone), 201
+
 @app.route('/api/drones/<string:drone_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_drone(drone_id):
     drone = find_item_by_id(db["drones"], drone_id)
     if drone:
         return jsonify(drone), 200
     return jsonify({"error": "Drone not found"}), 404
+
 @app.route('/api/drones/<string:drone_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_drone(drone_id):
     data = request.json
     updated_drone = update_item_by_id(db["drones"], drone_id, data)
     if updated_drone:
         return jsonify(updated_drone), 200
     return jsonify({"error": "Drone not found"}), 404
+
 @app.route('/api/drones/<string:drone_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_drone(drone_id):
-    global db
+    global db # Declare global to modify the top-level db dictionary
     new_drones_list, success = delete_item_by_id(db["drones"], drone_id)
     if success:
         db["drones"] = new_drones_list
         return jsonify({"message": "Drone deleted"}), 204
     return jsonify({"error": "Drone not found"}), 404
+
 # Ground Stations
 @app.route('/api/ground_stations', methods=['GET'])
-# @login_required
+@login_required
 def get_ground_stations():
     return jsonify(db["ground_stations"]), 200
+
 @app.route('/api/ground_stations', methods=['POST'])
-# @login_required
+@login_required
 def add_ground_station():
     data = request.json
     new_gs = {
@@ -598,23 +695,26 @@ def add_ground_station():
     }
     db["ground_stations"].append(new_gs)
     return jsonify(new_gs), 201
+
 @app.route('/api/ground_stations/<string:gs_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_ground_station(gs_id):
     gs = find_item_by_id(db["ground_stations"], gs_id)
     if gs:
         return jsonify(gs), 200
     return jsonify({"error": "Ground Station not found"}), 404
+
 @app.route('/api/ground_stations/<string:gs_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_ground_station(gs_id):
     data = request.json
     updated_gs = update_item_by_id(db["ground_stations"], gs_id, data)
     if updated_gs:
         return jsonify(updated_gs), 200
     return jsonify({"error": "Ground Station not found"}), 404
+
 @app.route('/api/ground_stations/<string:gs_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_ground_station(gs_id):
     global db
     new_gs_list, success = delete_item_by_id(db["ground_stations"], gs_id)
@@ -622,13 +722,15 @@ def delete_ground_station(gs_id):
         db["ground_stations"] = new_gs_list
         return jsonify({"message": "Ground Station deleted"}), 204
     return jsonify({"error": "Ground Station not found"}), 404
+
 # Equipment
 @app.route('/api/equipment', methods=['GET'])
-# @login_required
+@login_required
 def get_equipment():
     return jsonify(db["equipment"]), 200
+
 @app.route('/api/equipment', methods=['POST'])
-# @login_required
+@login_required
 def add_equipment():
     data = request.json
     new_eq = {
@@ -642,27 +744,30 @@ def add_equipment():
         "compatibility": data.get("compatibility", "N/A"),
         "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Equipment').replace(' ', '+')}"),
         "type": "Equipment",
-        "maintenanceHistory": data.get("maintenanceHistory", []),
+        "maintenanceHistory": data.get("maintenanceHistory",[]),
     }
     db["equipment"].append(new_eq)
     return jsonify(new_eq), 201
+
 @app.route('/api/equipment/<string:eq_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_single_equipment(eq_id):
     eq = find_item_by_id(db["equipment"], eq_id)
     if eq:
         return jsonify(eq), 200
     return jsonify({"error": "Equipment not found"}), 404
+
 @app.route('/api/equipment/<string:eq_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_equipment(eq_id):
     data = request.json
     updated_eq = update_item_by_id(db["equipment"], eq_id, data)
     if updated_eq:
         return jsonify(updated_eq), 200
     return jsonify({"error": "Equipment not found"}), 404
+
 @app.route('/api/equipment/<string:eq_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_equipment(eq_id):
     global db
     new_eq_list, success = delete_item_by_id(db["equipment"], eq_id)
@@ -670,13 +775,15 @@ def delete_equipment(eq_id):
         db["equipment"] = new_eq_list
         return jsonify({"message": "Equipment deleted"}), 204
     return jsonify({"error": "Equipment not found"}), 404
+
 # Batteries
 @app.route('/api/batteries', methods=['GET'])
-# @login_required
+@login_required
 def get_batteries():
     return jsonify(db["batteries"]), 200
+
 @app.route('/api/batteries', methods=['POST'])
-# @login_required
+@login_required
 def add_battery():
     data = request.json
     new_bat = {
@@ -689,29 +796,32 @@ def add_battery():
         "capacity": data.get("capacity", 0),
         "cycleCount": data.get("cycleCount", 0),
         "lastCharged": data.get("lastCharged", ""),
-        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Battery').replace(' ', '+')}"),
+        "imageUrl": data.get("imageUrl", f"https://placehold.co/400x300/random/random?text={data.get('name', 'Battery').replace(' ','+') }"),
         "type": "Battery",
         "maintenanceHistory": data.get("maintenanceHistory", []),
     }
     db["batteries"].append(new_bat)
     return jsonify(new_bat), 201
+
 @app.route('/api/batteries/<string:bat_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_battery(bat_id):
     bat = find_item_by_id(db["batteries"], bat_id)
     if bat:
         return jsonify(bat), 200
     return jsonify({"error": "Battery not found"}), 404
+
 @app.route('/api/batteries/<string:bat_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_battery(bat_id):
     data = request.json
     updated_bat = update_item_by_id(db["batteries"], bat_id, data)
     if updated_bat:
         return jsonify(updated_bat), 200
     return jsonify({"error": "Battery not found"}), 404
+
 @app.route('/api/batteries/<string:bat_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_battery(bat_id):
     global db
     new_bat_list, success = delete_item_by_id(db["batteries"], bat_id)
@@ -719,13 +829,15 @@ def delete_battery(bat_id):
         db["batteries"] = new_bat_list
         return jsonify({"message": "Battery deleted"}), 204
     return jsonify({"error": "Battery not found"}), 404
+
 # Missions
 @app.route('/api/missions', methods=['GET'])
-# @login_required
+@login_required
 def get_missions():
     return jsonify(db["missions"]), 200
+
 @app.route('/api/missions', methods=['POST'])
-# @login_required
+@login_required
 def add_mission():
     data = request.json
     new_mission = {
@@ -740,23 +852,26 @@ def add_mission():
     }
     db["missions"].append(new_mission)
     return jsonify(new_mission), 201
+
 @app.route('/api/missions/<string:mission_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_mission(mission_id):
     mission = find_item_by_id(db["missions"], mission_id)
     if mission:
         return jsonify(mission), 200
     return jsonify({"error": "Mission not found"}), 404
+
 @app.route('/api/missions/<string:mission_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_mission(mission_id):
     data = request.json
     updated_mission = update_item_by_id(db["missions"], mission_id, data)
     if updated_mission:
         return jsonify(updated_mission), 200
     return jsonify({"error": "Mission not found"}), 404
+
 @app.route('/api/missions/<string:mission_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_mission(mission_id):
     global db
     new_missions_list, success = delete_item_by_id(db["missions"], mission_id)
@@ -764,23 +879,25 @@ def delete_mission(mission_id):
         db["missions"] = new_missions_list
         return jsonify({"message": "Mission deleted"}), 204
     return jsonify({"error": "Mission not found"}), 404
+
 # Media
 @app.route('/api/media', methods=['GET'])
-# @login_required
+@login_required
 def get_media():
     return jsonify(db["media"]), 200
+
 @app.route('/api/media', methods=['POST'])
-# @login_required
+@login_required
 def add_media():
     data = request.json
     new_media = {
         "id": str(uuid.uuid4()),
         "title": data.get("title"),
         "type": data.get("type"),
-        "url": data.get("url"),
+        "url": data.get("url"), # Changed from "uri" to "url" to match frontend
         "thumbnail": data.get("thumbnail"),
-        "droneId": data.get("drone_id"),
-        "missionId": data.get("mission_id"),
+        "droneId": data.get("droneId"), # Changed from "drone_id"
+        "missionId": data.get("missionId"), # Changed from "mission_id"
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
         "gps": data.get("gps", "N/A"),
         "tags": data.get("tags", []),
@@ -790,25 +907,29 @@ def add_media():
     db["media"].append(new_media)
     socketio.emit('new_media_available', new_media)
     return jsonify(new_media), 201
+
 @app.route('/api/media/<string:media_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_single_media(media_id):
     media_item = find_item_by_id(db["media"], media_id)
     if media_item:
         return jsonify(media_item), 200
     return jsonify({"error": "Media item not found"}), 404
+
 @app.route('/api/media/<string:media_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_media(media_id):
     data = request.json
+    # Ensure tags are handled correctly if passed as a string
     if 'tags' in data and isinstance(data['tags'], str):
         data['tags'] = [tag.strip() for tag in data['tags'].split(',') if tag.strip()]
     updated_media = update_item_by_id(db["media"], media_id, data)
     if updated_media:
         return jsonify(updated_media), 200
     return jsonify({"error": "Media item not found"}), 404
+
 @app.route('/api/media/<string:media_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_media(media_id):
     global db
     new_media_list, success = delete_item_by_id(db["media"], media_id)
@@ -816,13 +937,15 @@ def delete_media(media_id):
         db["media"] = new_media_list
         return jsonify({"message": "Media item deleted"}), 204
     return jsonify({"error": "Media item not found"}), 404
+
 # Files
 @app.route('/api/files', methods=['GET'])
-# @login_required
+@login_required
 def get_files():
     return jsonify(db["files"]), 200
+
 @app.route('/api/files', methods=['POST'])
-# @login_required
+@login_required
 def add_file():
     data = request.json
     new_file = {
@@ -833,27 +956,31 @@ def add_file():
         "category": data.get("category"),
         "uploadDate": datetime.date.today().isoformat(),
         "description": data.get("description", ""),
-        "size": data.get("size", f"{random.randint(1, 10)}MB")
+        "size": data.get("size", f"{random.randint(1, 10)} MB") # Example size
     }
     db["files"].append(new_file)
     return jsonify(new_file), 201
+
 @app.route('/api/files/<string:file_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_file(file_id):
     file_item = find_item_by_id(db["files"], file_id)
     if file_item:
         return jsonify(file_item), 200
     return jsonify({"error": "File not found"}), 404
+
 @app.route('/api/files/<string:file_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_file(file_id):
     data = request.json
     updated_file = update_item_by_id(db["files"], file_id, data)
     if updated_file:
         return jsonify(updated_file), 200
     return jsonify({"error": "File not found"}), 404
+
+# Files Delete - continued from above
 @app.route('/api/files/<string:file_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_file(file_id):
     global db
     new_files_list, success = delete_item_by_id(db["files"], file_id)
@@ -861,13 +988,15 @@ def delete_file(file_id):
         db["files"] = new_files_list
         return jsonify({"message": "File deleted"}), 204
     return jsonify({"error": "File not found"}), 404
+
 # Checklists
 @app.route('/api/checklists', methods=['GET'])
-# @login_required
+@login_required
 def get_checklists():
     return jsonify(db["checklists"]), 200
+
 @app.route('/api/checklists', methods=['POST'])
-# @login_required
+@login_required
 def add_checklist():
     data = request.json
     new_checklist = {
@@ -882,23 +1011,26 @@ def add_checklist():
     }
     db["checklists"].append(new_checklist)
     return jsonify(new_checklist), 201
+
 @app.route('/api/checklists/<string:checklist_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_checklist(checklist_id):
     checklist = find_item_by_id(db["checklists"], checklist_id)
     if checklist:
         return jsonify(checklist), 200
     return jsonify({"error": "Checklist not found"}), 404
+
 @app.route('/api/checklists/<string:checklist_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_checklist(checklist_id):
     data = request.json
     updated_checklist = update_item_by_id(db["checklists"], checklist_id, data)
     if updated_checklist:
         return jsonify(updated_checklist), 200
     return jsonify({"error": "Checklist not found"}), 404
+
 @app.route('/api/checklists/<string:checklist_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_checklist(checklist_id):
     global db
     new_checklists_list, success = delete_item_by_id(db["checklists"], checklist_id)
@@ -906,13 +1038,15 @@ def delete_checklist(checklist_id):
         db["checklists"] = new_checklists_list
         return jsonify({"message": "Checklist deleted"}), 204
     return jsonify({"error": "Checklist not found"}), 404
+
 # Tags
 @app.route('/api/tags', methods=['GET'])
-# @login_required
+@login_required
 def get_tags():
     return jsonify(db["tags"]), 200
+
 @app.route('/api/tags', methods=['POST'])
-# @login_required
+@login_required
 def add_tag():
     data = request.json
     new_tag = {
@@ -922,23 +1056,26 @@ def add_tag():
     }
     db["tags"].append(new_tag)
     return jsonify(new_tag), 201
+
 @app.route('/api/tags/<string:tag_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_tag(tag_id):
     tag = find_item_by_id(db["tags"], tag_id)
     if tag:
         return jsonify(tag), 200
     return jsonify({"error": "Tag not found"}), 404
+
 @app.route('/api/tags/<string:tag_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_tag(tag_id):
     data = request.json
     updated_tag = update_item_by_id(db["tags"], tag_id, data)
     if updated_tag:
         return jsonify(updated_tag), 200
     return jsonify({"error": "Tag not found"}), 404
+
 @app.route('/api/tags/<string:tag_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_tag(tag_id):
     global db
     new_tags_list, success = delete_item_by_id(db["tags"], tag_id)
@@ -946,13 +1083,15 @@ def delete_tag(tag_id):
         db["tags"] = new_tags_list
         return jsonify({"message": "Tag deleted"}), 204
     return jsonify({"error": "Tag not found"}), 404
+
 # Incidents
 @app.route('/api/incidents', methods=['GET'])
-# @login_required
+@login_required
 def get_incidents():
     return jsonify(db["incidents"]), 200
+
 @app.route('/api/incidents', methods=['POST'])
-# @login_required
+@login_required
 def add_incident():
     data = request.json
     new_incident = {
@@ -965,23 +1104,18 @@ def add_incident():
     db["incidents"].append(new_incident)
     socketio.emit('new_notification', new_incident)
     return jsonify(new_incident), 201
-@app.route('/api/incidents/<string:incident_id>', methods=['GET'])
-# @login_required
-def get_incident(incident_id):
-    incident = find_item_by_id(db["incidents"], incident_id)
-    if incident:
-        return jsonify(incident), 200
-    return jsonify({"error": "Incident not found"}), 404
+
 @app.route('/api/incidents/<string:incident_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_incident(incident_id):
     data = request.json
     updated_incident = update_item_by_id(db["incidents"], incident_id, data)
     if updated_incident:
         return jsonify(updated_incident), 200
-    return jsonify({"error": "Incident not found"}), 40
+    return jsonify({"error": "Incident not found"}), 404 # Typo in original code: 40 instead of 404
+
 @app.route('/api/incidents/<string:incident_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_incident(incident_id):
     global db
     new_incidents_list, success = delete_item_by_id(db["incidents"], incident_id)
@@ -989,41 +1123,46 @@ def delete_incident(incident_id):
         db["incidents"] = new_incidents_list
         return jsonify({"message": "Incident deleted"}), 204
     return jsonify({"error": "Incident not found"}), 404
+
 # Maintenance Parts
 @app.route('/api/maintenance_parts', methods=['GET'])
-# @login_required
+@login_required
 def get_maintenance_parts():
     return jsonify(db["maintenance_parts"]), 200
+
 @app.route('/api/maintenance_parts', methods=['POST'])
-# @login_required
+@login_required
 def add_maintenance_part():
     data = request.json
     new_part = {
         "id": str(uuid.uuid4()),
         "name": data.get("name"),
         "status": data.get("status", "Available"),
-        "lastMaintenance": data.get("last_maintenance", datetime.date.today().isoformat() + 'Z'),
-        "nextMaintenance": data.get("next_maintenance", "")
+        "lastMaintenance": data.get("lastMaintenance", datetime.date.today().isoformat() + 'Z'),
+        "nextMaintenance": data.get("nextMaintenance", "")
     }
     db["maintenance_parts"].append(new_part)
     return jsonify(new_part), 201
+
 @app.route('/api/maintenance_parts/<string:part_id>', methods=['GET'])
-# @login_required
+@login_required
 def get_maintenance_part(part_id):
     part = find_item_by_id(db["maintenance_parts"], part_id)
     if part:
         return jsonify(part), 200
     return jsonify({"error": "Maintenance part not found"}), 404
+
 @app.route('/api/maintenance_parts/<string:part_id>', methods=['PUT'])
-# @login_required
+@login_required
 def update_maintenance_part(part_id):
     data = request.json
     updated_part = update_item_by_id(db["maintenance_parts"], part_id, data)
     if updated_part:
         return jsonify(updated_part), 200
     return jsonify({"error": "Maintenance part not found"}), 404
+
 @app.route('/api/maintenance_parts/<string:part_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_maintenance_part(part_id):
     global db
     new_parts_list, success = delete_item_by_id(db["maintenance_parts"], part_id)
@@ -1031,14 +1170,16 @@ def delete_maintenance_part(part_id):
         db["maintenance_parts"] = new_parts_list
         return jsonify({"message": "Maintenance part deleted"}), 204
     return jsonify({"error": "Maintenance part not found"}), 404
+
 # Notifications
 @app.route('/api/notifications', methods=['GET'])
-# @login_required
+@login_required
 def get_notifications():
     sorted_notifications = sorted(db["notifications"], key=lambda x: x.get('timestamp', ''), reverse=True)
     return jsonify(sorted_notifications), 200
+
 @app.route('/api/notifications/mark_read/<string:notification_id>', methods=['POST'])
-# @login_required
+@login_required
 def mark_notification_read(notification_id):
     notif_to_update = find_item_by_id(db["notifications"], notification_id)
     if notif_to_update:
@@ -1046,15 +1187,19 @@ def mark_notification_read(notification_id):
         socketio.emit('notification_updated', notif_to_update)
         return jsonify(notif_to_update), 200
     return jsonify({"error": "Notification not found"}), 404
+
 @app.route('/api/notifications/mark_all_read', methods=['POST'])
-# @login_required
+@login_required
 def mark_all_notifications_read():
     for notif in db["notifications"]:
         notif["read"] = True
+    # Emit a specific event for marking all read if the frontend handles it differently,
+    # otherwise, just emit 'notifications_updated' with the full list.
     socketio.emit('notifications_updated', db["notifications"])
     return jsonify({"message": "All notifications marked as read"}), 200
+
 @app.route('/api/notifications/delete/<string:notification_id>', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_notification(notification_id):
     global db
     new_notifications_list, success = delete_item_by_id(db["notifications"], notification_id)
@@ -1063,8 +1208,9 @@ def delete_notification(notification_id):
         socketio.emit('notification_deleted', {"id": notification_id})
         return jsonify({"message": "Notification deleted"}), 204
     return jsonify({"error": "Notification not found"}), 404
+
 @app.route('/api/notifications/delete_read', methods=['DELETE'])
-# @login_required
+@login_required
 def delete_all_read_notifications():
     global db
     initial_len = len(db["notifications"])
@@ -1073,10 +1219,10 @@ def delete_all_read_notifications():
         socketio.emit('notifications_updated', db["notifications"])
         return jsonify({"message": "All read notifications deleted"}), 204
     return jsonify({"message": "No read notifications to delete"}), 200
+
 # User Profile
 @app.route('/api/user/profile', methods=['GET'])
-# @login_required
-
+@login_required
 def get_user_profile():
     current_user_data = get_current_user_from_request()
     if current_user_data:
@@ -1084,8 +1230,9 @@ def get_user_profile():
         user_copy.pop("password", None)
         return jsonify(user_copy), 200
     return jsonify({"error": "User profile not found"}), 404
+
 @app.route('/api/user/profile', methods=['PUT'])
-# @login_required
+@login_required
 def update_user_profile():
     data = request.json
     current_user_data = get_current_user_from_request()
@@ -1100,9 +1247,11 @@ def update_user_profile():
             user_copy = user.copy()
             user_copy.pop("password", None)
             return jsonify(user_copy), 200
-    return jsonify({"error": "User not found"}), 404
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"error": "Authentication required"}), 401
+
 @app.route('/api/user/change_password', methods=['POST'])
-# @login_required
+@login_required
 def change_password():
     data = request.json
     current_password = data.get('current_password')
@@ -1113,10 +1262,9 @@ def change_password():
         db["users"][user_id]["password"] = new_password
         return jsonify({"message": "Password changed successfully"}), 200
     return jsonify({"error": "Incorrect current password or user not found"}), 401
+
 @app.route('/api/user/profile_picture', methods=['POST'])
-
-# @login_required
-
+@login_required
 def update_profile_picture():
     data = request.json
     new_url = data.get('profile_picture_url')
@@ -1128,47 +1276,57 @@ def update_profile_picture():
         user_copy.pop("password", None)
         return jsonify(user_copy), 200
     return jsonify({"error": "User not found"}), 404
+
 @app.route('/api/connected_drones', methods=['GET'])
 def get_connected_drones_api():
     return jsonify(db["connected_drones"]), 200
+
 @app.route('/api/command_drone/<string:drone_id>', methods=['POST'])
 def command_drone(drone_id):
     data = request.json
     command = data.get('command')
-    params = data.get('params', {})
+    params = data.get('params', {}) # Changed from () to {} for dict
+
     if drone_id not in db["connected_drones"]:
         return jsonify({"error": f"Drone {drone_id} is not connected."}), 400
+
     print(f"Received command for drone {drone_id}: {command} with params {params}")
     current_telemetry = db["live_telemetry"].get(drone_id, {})
     drone_in_db = next((d for d in db["drones"] if d["id"] == drone_id), None)
+
     if command == "takeoff":
         current_telemetry["altitude"] = params.get("altitude", 10)
-        current_telemetry["status"] = "flying"
+        current_telemetry["status"] = "flying" # Changed from "Flying" to "flying" to match initial state
         if drone_in_db: drone_in_db["status"] = "Deployed"
         socketio.emit('new_notification', {
-            "id": str(uuid.uuid4()), "message": f"Drone {drone_id} took off to {current_telemetry['altitude']}m.",
-            "type": "info", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+            "id": str(uuid.uuid4()),
+            "message": f"Drone {drone_id} took off to {current_telemetry['altitude']}m.",
+            "type": "info", "read": False,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
         })
     elif command == "land":
         current_telemetry["altitude"] = 0
+        current_telemetry["speed"] = 0 # Added to set speed to 0 on landing
         current_telemetry["status"] = "landed"
         if drone_in_db: drone_in_db["status"] = "Available"
         socketio.emit('new_notification', {
-            "id": str(uuid.uuid4()), "message": f"Drone {drone_id} has landed.",
-            "type": "info", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+            "id": str(uuid.uuid4()),
+            "message": f"Drone {drone_id} has landed.",
+            "type": "info", "read": False,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
         })
     elif command == "take_photo":
         new_media_id = str(uuid.uuid4())
         new_media_item = {
             "id": new_media_id,
             "title": f"Photo from {drone_id} ({datetime.datetime.now().strftime('%Y-%m-%d %H:%M')})",
+            "url": f"https://picsum.photos/600x400?random={random.randint(1,1000)}",
             "type": "image",
-            "url": f"https://picsum.photos/600/400?random={random.randint(1,1000)}",
-            "thumbnail": f"https://picsum.photos/300/200?random={random.randint(1,1000)}",
+            "thumbnail": f"https://picsum.photos/300x200?random={random.randint(1,1000)}",
             "droneId": drone_id,
             "missionId": "N/A",
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z',
-            "gps": f"{current_telemetry.get('latitude', 'N/A')}° N, {current_telemetry.get('longitude', 'N/A')}° E",
+            "gps": f"{current_telemetry.get('latitude', 'N/A')}, {current_telemetry.get('longitude', 'N/A')}",
             "tags": ["captured", "drone", "photo"],
             "description": "Captured during live operation.",
             "date": datetime.date.today().isoformat()
@@ -1176,41 +1334,54 @@ def command_drone(drone_id):
         db["media"].append(new_media_item)
         socketio.emit('new_media_available', new_media_item)
         socketio.emit('new_notification', {
-            "id": str(uuid.uuid4()), "message": f"New photo captured by drone {drone_id}.",
-            "type": "success", "read": False, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
+            "id": str(uuid.uuid4()),
+            "message": f"New photo captured by drone {drone_id}.",
+            "type": "success", "read": False,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
         })
         print(f"New media captured: {new_media_id}")
+
     db["live_telemetry"][drone_id] = current_telemetry
     socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": current_telemetry})
-    return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
+    return jsonify({"message": f"Command {command} sent to drone {drone_id}"}), 200
 
+# --- WebSocket Event Handlers ---
 @socketio.on('connect')
 def handle_connect():
     print(f"Client connected: {request.sid}")
+
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f"Client disconnected: {request.sid}")
+
 @socketio.on('register_as_frontend')
 def register_frontend():
     print(f"Frontend registered with SID: {request.sid}")
+
+# --- Background Telemetry Simulation Thread ---
 def simulate_drone_telemetry():
     while True:
+        # Simulate mission progress and drone connection status based on missions
         for mission in db["missions"]:
+            # If mission is active and drone is not yet connected in the simulation
             if mission["status"] == "Active" and mission["drone_id"] not in db["connected_drones"]:
                 db["connected_drones"].append(mission["drone_id"])
                 socketio.emit('new_notification', {
                     "id": str(uuid.uuid4()),
-                    "message": f"Drone {mission['drone_id']} gateway connected for mission '{mission['name']}'.",
+                    "message": f"Drone {mission['drone_id']} gateway connected for mission {mission['name']}.",
                     "type": "info",
                     "read": False,
                     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
                 })
+                # Update drone status in db["drones"]
                 for d in db["drones"]:
                     if d["id"] == mission["drone_id"]:
                         d["status"] = "Deployed"
                         break
+
+            # Simulate mission progress
             if mission["status"] == "Active" and mission["progress"] < 100:
-                mission["progress"] += random.randint(1, 5)
+                mission["progress"] += random.randint(1, 5) # Increment progress
                 if mission["progress"] >= 100:
                     mission["progress"] = 100
                     mission["status"] = "Completed"
@@ -1221,51 +1392,88 @@ def simulate_drone_telemetry():
                         "read": False,
                         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
                     })
+                    # Disconnect drone after mission completion
                     if mission["drone_id"] in db["connected_drones"]:
-                         db["connected_drones"].remove(mission["drone_id"])
-                         socketio.emit('new_notification', {
+                        db["connected_drones"].remove(mission["drone_id"])
+                        socketio.emit('new_notification', {
                             "id": str(uuid.uuid4()),
                             "message": f"Drone {mission['drone_id']} gateway disconnected after mission completion.",
                             "type": "info",
                             "read": False,
                             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + 'Z'
                         })
-                         for d in db["drones"]:
+                        # Update drone status in db["drones"]
+                        for d in db["drones"]:
                             if d["id"] == mission["drone_id"]:
                                 d["status"] = "Available"
                                 break
 
+        # Simulate telemetry for connected drones
         for drone_id in db["connected_drones"]:
             telemetry = db["live_telemetry"].get(drone_id, {
                 "altitude": random.uniform(0, 100),
                 "speed": random.uniform(0, 20),
-                "battery_percent": random.randint(20, 100),
+                "battery_percent": random.randint(70, 100), # Start higher for flying
                 "latitude": random.uniform(23.5, 23.7),
                 "longitude": random.uniform(58.3, 58.6),
                 "status": "flying"
             })
+
+            # Update telemetry based on status
             if telemetry["status"] == "flying":
                 telemetry["altitude"] = max(0, min(150, telemetry["altitude"] + random.uniform(-5, 5)))
                 telemetry["speed"] = max(5, min(25, telemetry["speed"] + random.uniform(-1, 1)))
                 telemetry["battery_percent"] = max(0, telemetry["battery_percent"] - random.uniform(0.5, 1.5))
+                # Trigger landing if battery is very low while flying
+                if telemetry["battery_percent"] < 10 and telemetry["altitude"] > 0:
+                    telemetry["status"] = "landing" # Intermediate status
+                elif telemetry["battery_percent"] <= 0:
+                    telemetry["battery_percent"] = 0
+                    telemetry["status"] = "landed" # Force landed if battery drains
+                    telemetry["altitude"] = 0
+                    telemetry["speed"] = 0
+
+            elif telemetry["status"] == "landing":
+                telemetry["altitude"] = max(0, telemetry["altitude"] - random.uniform(2, 8)) # Descend
+                telemetry["speed"] = max(1, min(10, telemetry["speed"] - random.uniform(0.1, 0.5))) # Slow down
+                telemetry["battery_percent"] = max(0, telemetry["battery_percent"] - random.uniform(0.2, 0.8))
+                if telemetry["altitude"] <= 0:
+                    telemetry["altitude"] = 0
+                    telemetry["status"] = "landed"
+                    telemetry["speed"] = 0
             elif telemetry["status"] == "landed":
                 telemetry["altitude"] = 0
                 telemetry["speed"] = 0
-                telemetry["battery_percent"] = min(100, telemetry["battery_percent"] + random.uniform(0.1, 0.5))
+                # Simulate charging if landed and battery low
+                if telemetry["battery_percent"] < 100:
+                    telemetry["battery_percent"] = min(100, telemetry["battery_percent"] + random.uniform(0.1, 0.5))
+                else:
+                    telemetry["status"] = "available" # Ready for next mission
             elif telemetry["status"] == "maintenance":
                 telemetry["altitude"] = 0
                 telemetry["speed"] = 0
-                telemetry["battery_percent"] = 100
-            telemetry["latitude"] = telemetry["latitude"] + random.uniform(-0.0005, 0.0005)
-            telemetry["longitude"] = telemetry["longitude"] + random.uniform(-0.0005, 0.0005)
+                telemetry["battery_percent"] = 100 # Assume charged during maintenance
+                telemetry["status"] = "available" # Exit maintenance after a while (simple simulation)
+            elif telemetry["status"] == "available":
+                telemetry["altitude"] = 0
+                telemetry["speed"] = 0
+                telemetry["battery_percent"] = 100 # Fully charged and ready
+
+            # Slight random movement for non-flying drones too, but very small
+            telemetry["latitude"] += random.uniform(-0.00005, 0.00005)
+            telemetry["longitude"] += random.uniform(-0.00005, 0.00005)
 
             for d in db["drones"]:
                 if d["id"] == drone_id:
-
-                    d["status"] = "Deployed" if telemetry["status"] == "flying" else "Available"
+                    
+                    if telemetry["status"] == "flying" or telemetry["status"] == "landing":
+                        d["status"] = "Deployed"
+                    elif telemetry["status"] == "landed" or telemetry["status"] == "available":
+                        d["status"] = "Available"
+                    elif telemetry["status"] == "maintenance": # For manual setting
+                        d["status"] = "In Maintenance"
                     d["battery"] = telemetry["battery_percent"]
                     d["lastLocation"] = f"Lat: {telemetry['latitude']:.4f}, Lng: {telemetry['longitude']:.4f}"
-
                     break
 
             if telemetry["battery_percent"] < 15 and not any(inc['message'].startswith(f"Drone {drone_id} battery critical") for inc in db["incidents"]):
@@ -1279,10 +1487,15 @@ def simulate_drone_telemetry():
                 db["incidents"].append(new_incident)
                 socketio.emit('new_notification', new_incident)
                 print(f"Emitting new incident: {new_incident['message']}")
+
             db["live_telemetry"][drone_id] = telemetry
             socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": telemetry})
-        time.sleep(2)
-threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
-if __name__ == '__main__':
 
+        time.sleep(2) # Update every 2 seconds
+
+if __name__ == '__main__':
+   
+    threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
+
+    # Run the Flask-SocketIO application
     socketio.run(app, debug=True, port=5000)

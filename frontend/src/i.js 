@@ -189,7 +189,7 @@ const AdminPanel = () => {
 };
 
 const AdminLoginPage = ({ onLogin }) => {
-    const [username, setUsername] = useState('');
+   
     const [password, setPassword] = useState('');
     return (
         <div className="w-full h-screen flex items-center justify-center bg-gray-800"> {/* THEME CHANGE */}
