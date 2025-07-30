@@ -1,5 +1,4 @@
-
-// src/App.js
+import ReactPlayer from 'react-player';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -2327,97 +2326,58 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
 
 // --- 4. OPERATION COMPONENTS (Live Operations, Missions) ---
 
+// In src/App.js
+ // Add this import
+
 const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage }) => {
     const [selectedDroneId, setSelectedDroneId] = useState('');
 
     useEffect(() => {
-        if (drones.length > 0) {
-            // If no drone is selected or the selected drone is no longer in the list, set a new default
-            if (!selectedDroneId || !drones.find(d => d.id === selectedDroneId)) {
-                setSelectedDroneId(drones[0].id);
-            }
-        } else {
-            setSelectedDroneId(''); // Clear selection if no drones available
+        if (drones.length > 0 && !selectedDroneId) {
+            setSelectedDroneId(drones[0].id);
         }
     }, [drones, selectedDroneId]);
 
     const currentTelemetry = liveTelemetry[selectedDroneId] || {};
     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
 
+
+    const streamUrl = `http://96.9.130.64:8000/live/${selectedDroneId}/index.m3u8`;
     const handleCommand = (command, params = {}) => {
-        if (!selectedDroneId) {
-            displayMessage("No drone selected.", 'error');
-            return;
-        }
-        if (!isSelectedDroneOnline) {
-            displayMessage(`Cannot send command: Drone ${selectedDroneId} is offline.`, 'error');
-            return;
-        }
-        sendDroneCommand(selectedDroneId, command, params);
+    
     };
 
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
 
-            <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-lg shadow-sm">
-                <div className="flex items-center space-x-3">
-                    <label htmlFor="drone-select" className="text-gray-700 font-medium">Select Drone:</label>
-                    <select
-                        id="drone-select"
-                        value={selectedDroneId}
-                        onChange={(e) => setSelectedDroneId(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                        {drones.length > 0 ? (
-                            drones.map(drone => (
-                                <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueId})</option>
-                            ))
-                        ) : (
-                            <option value="">No drones available</option>
-                        )}
-                    </select>
-                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isSelectedDroneOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {isSelectedDroneOnline ? 'Online' : 'Offline'}
-                    </span>
-                </div>
-                <div className="flex space-x-2">
-                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline ||
-                        !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
-                        <Rocket className="w-5 h-5 mr-2" /> Takeoff
-                    </button>
-                    <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
-                        <Home className="w-5 h-5 mr-2" /> Land
-                    </button>
-                    <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
-                        <Camera className="w-5 h-5 mr-2" /> Take Photo
-                    </button>
-                </div>
-            </div>
+            {/* ... (your existing drone selection and command buttons) ... */}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-                <div className="lg:col-span-2 bg-gray-900 rounded-xl shadow-md flex items-center justify-center text-gray-400">
-                    {/* Placeholder for video feed or map */}
-                    Simulated Drone Feed
+                <div className="lg:col-span-2 bg-black rounded-xl shadow-md flex items-center justify-center text-gray-400">
+                    {/* --- THIS IS THE NEW PART --- */}
+                    {isSelectedDroneOnline ? (
+                        <ReactPlayer
+                            url={streamUrl}
+                            playing={true}
+                            muted={true}
+                            width='100%'
+                            height='100%'
+                            controls={true}
+                            config={{ file: { forceHLS: true } }}
+                        />
+                    ) : (
+                        <span>Live feed is offline.</span>
+                    )}
                 </div>
+
                 <div className="lg:col-span-1 flex flex-col space-y-6">
-                    <div className="bg-white rounded-xl shadow-md p-4 flex-1">
-                        <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
-                        <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-md p-4">
-                        <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
-                        <p>Altitude: {currentTelemetry.altitude?.toFixed(1) || 0}m</p>
-                        <p>Speed: {currentTelemetry.speed?.toFixed(1) || 0} m/s</p>
-                        <p>Battery: {currentTelemetry.battery_percent?.toFixed(0) || 0}%</p>
-                        <p>Status: {currentTelemetry.status || 'N/A'}</p>
-                    </div>
+                    {/* ... (your existing map and telemetry sections) ... */}
                 </div>
             </div>
         </div>
     );
 };
-
 // In src/App.js
 
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
