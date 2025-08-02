@@ -9,13 +9,12 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import JSON
+import os
 
 # --- App Initialization ---
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-import os # Make sure this import is at the top of the file
 
 # --- Database Configuration ---
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -50,7 +49,7 @@ class User(db.Model):
         return user_dict
 
 class Drone(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120), nullable=False)
     model = db.Column(db.String(80))
     manufacturer = db.Column(db.String(80))
@@ -67,7 +66,7 @@ class Drone(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class GroundStation(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     model = db.Column(db.String(80))
     manufacturer = db.Column(db.String(80))
@@ -83,7 +82,7 @@ class GroundStation(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class Equipment(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     model = db.Column(db.String(80))
     manufacturer = db.Column(db.String(80))
@@ -99,7 +98,7 @@ class Equipment(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class Battery(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     model = db.Column(db.String(80))
     manufacturer = db.Column(db.String(80))
@@ -116,7 +115,7 @@ class Battery(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 class Mission(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120), nullable=False)
     drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'))
     start_time = db.Column(db.DateTime)
@@ -157,7 +156,7 @@ class Media(db.Model):
         }
 
 class File(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     type = db.Column(db.String(50))
     url = db.Column(db.String(255))
@@ -172,7 +171,7 @@ class File(db.Model):
         return d
 
 class Checklist(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     description = db.Column(db.Text)
     items = db.Column(JSON)
@@ -187,7 +186,7 @@ class Checklist(db.Model):
         return d
 
 class Tag(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(100))
     description = db.Column(db.Text)
 
@@ -207,7 +206,7 @@ class Incident(db.Model):
         return d
 
 class MaintenancePart(db.Model):
-    id = db.Column(db.String(36), primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120))
     status = db.Column(db.String(50))
     lastMaintenance = db.Column(db.Date)
@@ -312,54 +311,54 @@ def handle_crud(model, item_id=None):
             items = model.query.all()
             return jsonify([item.to_dict() for item in items])
     
-    data = request.get_json()
-    if request.method == 'POST':
-        # Handle date/datetime conversions for POST
-        if model == Mission:
-            data['start_time'] = parse_datetime_str(data.get('start_time'))
-            data['end_time'] = parse_datetime_str(data.get('end_time'))
-        elif model == Media:
-            data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-            data['date'] = datetime.date.today()
-        elif model == File:
-            data['uploadDate'] = datetime.date.today()
-        elif model == Incident:
-            data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-        elif model == MaintenancePart:
-            data['lastMaintenance'] = parse_date_str(data.get('lastMaintenance'))
-            data['nextMaintenance'] = parse_date_str(data.get('nextMaintenance'))
+    if request.method == 'POST' or request.method == 'PUT':
+        data = request.get_json()
+        if request.method == 'POST':
+            # Handle date/datetime conversions for POST
+            if model == Mission:
+                data['start_time'] = parse_datetime_str(data.get('start_time'))
+                data['end_time'] = parse_datetime_str(data.get('end_time'))
+            elif model == Media:
+                data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+                data['date'] = datetime.date.today()
+            elif model == File:
+                data['uploadDate'] = datetime.date.today()
+            elif model == Incident:
+                data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+            elif model == MaintenancePart:
+                data['lastMaintenance'] = parse_date_str(data.get('lastMaintenance'))
+                data['nextMaintenance'] = parse_date_str(data.get('nextMaintenance'))
 
-        new_item = model(**data)
-        db.session.add(new_item)
-        db.session.commit()
+            new_item = model(**data)
+            db.session.add(new_item)
+            db.session.commit()
 
-        if model == Media: # Special case for media to emit socket event
-            socketio.emit('new_media_available', new_item.to_dict())
+            if model == Media:
+                socketio.emit('new_media_available', new_item.to_dict())
 
-        return jsonify(new_item.to_dict()), 201
+            return jsonify(new_item.to_dict()), 201
 
-    elif request.method == 'PUT':
-        item = model.query.get_or_404(item_id)
-        # Handle date/datetime conversions for PUT
-        if model == Mission:
-            if data.get('start_time'): data['start_time'] = parse_datetime_str(data['start_time'])
-            if data.get('end_time'): data['end_time'] = parse_datetime_str(data['end_time'])
-        elif model == MaintenancePart:
-            if data.get('lastMaintenance'): data['lastMaintenance'] = parse_date_str(data['lastMaintenance'])
-            if data.get('nextMaintenance'): data['nextMaintenance'] = parse_date_str(data['nextMaintenance'])
+        elif request.method == 'PUT':
+            item = model.query.get_or_404(item_id)
+            # Handle date/datetime conversions for PUT
+            if model == Mission:
+                if data.get('start_time'): data['start_time'] = parse_datetime_str(data['start_time'])
+                if data.get('end_time'): data['end_time'] = parse_datetime_str(data['end_time'])
+            elif model == MaintenancePart:
+                if data.get('lastMaintenance'): data['lastMaintenance'] = parse_date_str(data['lastMaintenance'])
+                if data.get('nextMaintenance'): data['nextMaintenance'] = parse_date_str(data['nextMaintenance'])
 
-        for key, value in data.items():
-            if hasattr(item, key):
-                setattr(item, key, value)
-        db.session.commit()
-        return jsonify(item.to_dict())
+            for key, value in data.items():
+                if hasattr(item, key):
+                    setattr(item, key, value)
+            db.session.commit()
+            return jsonify(item.to_dict())
 
     elif request.method == 'DELETE':
         item = model.query.get_or_404(item_id)
         db.session.delete(item)
         db.session.commit()
         return ('', 204)
-
 # --- API Endpoints ---
 @app.route('/api/login', methods=['POST'])
 def login():

@@ -10,7 +10,19 @@ const config = {
   },
   http: {
     port: 8000,
+    mediaroot: './media', // Added for HLS files
     allow_origin: '*'
+  },
+  trans: {
+    ffmpeg: '/usr/local/bin/ffmpeg', // Path to your FFmpeg installation
+    tasks: [
+      {
+        app: 'live',
+        hls: true,
+        hlsFlags: '[hls_time=2:hls_list_size=3:hls_flags=delete_segments]',
+        hlsKeep: false, // Important for live streaming
+      }
+    ]
   }
 };
 
