@@ -1,4 +1,5 @@
-import ReactPlayer from 'react-player';
+// import ReactPlayer from 'react-player';
+import Hls from 'hls.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -2327,31 +2328,274 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
 // --- 4. OPERATION COMPONENTS (Live Operations, Missions) ---
 
 
-const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage }) => {
-    const [selectedDroneId, setSelectedDroneId] = useState('');
 
-    // This effect now correctly sets the default drone only when the drone list changes.
+// const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage, onAddDrone, onRemoveDrone }) => {
+//     const [selectedDroneId, setSelectedDroneId] = useState('');
+    
+//     // State for the "Add Drone" modal
+//     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+//     const [newDroneData, setNewDroneData] = useState({ id: '', name: '', uniqueId: '', status: 'Offline' });
+
+//     // State to manually control video playback and force re-mounting
+//     const [isPlaying, setIsPlaying] = useState(false);
+//     const [playerKey, setPlayerKey] = useState(Date.now()); // Key to force re-render
+
+//     useEffect(() => {
+//         // Sets the default drone when the list loads or changes
+//         if (drones.length > 0 && !drones.find(d => d.id === selectedDroneId)) {
+//             setSelectedDroneId(drones[0].id);
+//         } else if (drones.length === 0) {
+//             setSelectedDroneId('');
+//         }
+//     }, [drones, selectedDroneId]);
+
+//     // Define component variables
+//     const currentTelemetry = liveTelemetry[selectedDroneId] || {};
+//     const selectedDrone = drones.find(d => d.id === selectedDroneId);
+//     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
+//     const streamUrl = selectedDroneId ? `http://96.9.130.64:8000/live/${selectedDroneId}/index.m3u8` : null;
+
+//     // This effect resets the player's state when the drone (and streamUrl) changes
+//     useEffect(() => {
+//         setIsPlaying(false); // Stop playback when switching drones
+//         setPlayerKey(Date.now()); // Change the key to force a complete re-mount of the player
+//     }, [streamUrl]);
+    
+//     // Handler for sending commands
+//     const handleCommand = (command, params = {}) => {
+//         if (!selectedDroneId) {
+//             displayMessage("No drone selected.", 'error');
+//             return;
+//         }
+//         if (!isSelectedDroneOnline) {
+//             displayMessage(`Cannot send command: Drone ${selectedDroneId} is offline.`, 'error');
+//             return;
+//         }
+//         sendDroneCommand(selectedDroneId, command, params);
+//     };
+
+//     // Handler to remove the selected drone
+//     const handleRemoveClick = () => {
+//         if (!selectedDroneId) {
+//             displayMessage("No drone selected to remove.", 'error');
+//             return;
+//         }
+//         if (window.confirm(`Are you sure you want to remove drone ${selectedDrone.name} (${selectedDroneId})?`)) {
+//             onRemoveDrone(selectedDroneId);
+//         }
+//     };
+    
+//     // Handler to save a new drone from the modal
+//     const handleSaveNewDrone = () => {
+//         if (!newDroneData.id || !newDroneData.name || !newDroneData.uniqueId) {
+//             displayMessage("Please fill out all fields.", 'error');
+//             return;
+//         }
+//         onAddDrone(newDroneData);
+//         setIsAddModalOpen(false);
+//         setNewDroneData({ id: '', name: '', uniqueId: '', status: 'Offline' }); 
+//     };
+
+//     return (
+//         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+//             <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
+
+//             <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-lg shadow-sm">
+//                 <div className="flex items-center space-x-3">
+//                     <label htmlFor="drone-select" className="text-gray-700 font-medium">Select Drone:</label>
+//                     <select
+//                         id="drone-select"
+//                         value={selectedDroneId}
+//                         onChange={(e) => setSelectedDroneId(e.target.value)}
+//                         className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+//                     >
+//                         {drones.length > 0 ? (
+//                             drones.map(drone => (
+//                                 <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueId})</option>
+//                             ))
+//                         ) : (
+//                             <option value="">No drones available</option>
+//                         )}
+//                     </select>
+//                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isSelectedDroneOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+//                         {isSelectedDroneOnline ? 'Online' : 'Offline'}
+//                     </span>
+//                     <div className="flex items-center space-x-2 border-l pl-3 ml-1">
+//                         <button onClick={() => setIsAddModalOpen(true)} className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 shadow-sm" title="Add New Drone">
+//                             <Plus size={18} />
+//                         </button>
+//                         <button onClick={handleRemoveClick} disabled={!selectedDroneId} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 disabled:bg-gray-400 shadow-sm" title="Remove Selected Drone">
+//                             <Trash2 size={18} />
+//                         </button>
+//                     </div>
+//                 </div>
+//                 <div className="flex space-x-2">
+//                     <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
+//                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
+//                     </button>
+//                     <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
+//                         <Home className="w-5 h-5 mr-2" /> Land
+//                     </button>
+//                     <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
+//                         <Camera className="w-5 h-5 mr-2" /> Take Photo
+//                     </button>
+//                 </div>
+//             </div>
+
+//             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+//                 <div className="lg:col-span-2 bg-black rounded-xl shadow-md flex items-center justify-center text-gray-400">
+//                     {isSelectedDroneOnline && streamUrl ? (
+//                         <ReactPlayer
+//                             key={playerKey}
+//                             url={streamUrl}
+//                             playing={isPlaying}
+//                             onReady={() => setIsPlaying(true)}
+//                             onError={e => {
+//                                 console.error('ReactPlayer Error:', e);
+//                                 setIsPlaying(false);
+//                             }}
+//                             muted={true}
+//                             width='100%'
+//                             height='100%'
+//                             controls={true}
+//                             config={{ file: { forceHLS: true } }}
+//                         />
+//                     ) : (
+//                         <span>Live feed is offline or no drone selected.</span>
+//                     )}
+//                 </div>
+//                 <div className="lg:col-span-1 flex flex-col space-y-6">
+//                     <div className="bg-white rounded-xl shadow-md p-4 flex-1">
+//                         <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
+//                         <div className="bg-gray-200 h-full rounded-md flex items-center justify-center">
+//                              <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
+//                         </div>
+//                     </div>
+//                     <div className="bg-white rounded-xl shadow-md p-4">
+//                         <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
+//                         <div className="space-y-2 text-sm text-gray-700">
+//                             <p className="flex justify-between"><span><Gauge size={14} className="inline mr-2" />Altitude:</span> <span className="font-semibold">{currentTelemetry.altitude?.toFixed(1) || 0} m</span></p>
+//                             <p className="flex justify-between"><span><Activity size={14} className="inline mr-2" />Speed:</span> <span className="font-semibold">{currentTelemetry.speed?.toFixed(1) || 0} m/s</span></p>
+//                             <p className="flex justify-between"><span><Battery size={14} className="inline mr-2" />Battery:</span> <span className="font-semibold">{currentTelemetry.battery_percent?.toFixed(0) || 0} %</span></p>
+//                             <p className="flex justify-between"><span><MapPin size={14} className="inline mr-2" />Status:</span> <span className="font-semibold">{currentTelemetry.status || 'N/A'}</span></p>
+//                         </div>
+//                     </div>
+//                 </div>
+//             </div>
+
+//             {isAddModalOpen && (
+//                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+//                     <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+//                         <h3 className="text-2xl font-bold mb-6">Add New Drone</h3>
+//                         <div className="space-y-4">
+//                             <input type="text" placeholder="Drone ID (e.g., DRN-003)" value={newDroneData.id} onChange={e => setNewDroneData({ ...newDroneData, id: e.target.value })} className="w-full p-3 border rounded-md" />
+//                             <input type="text" placeholder="Drone Name (e.g., AeroScout)" value={newDroneData.name} onChange={e => setNewDroneData({ ...newDroneData, name: e.target.value })} className="w-full p-3 border rounded-md" />
+//                             <input type="text" placeholder="Unique ID (e.g., SN-AERO-SCOUT-001)" value={newDroneData.uniqueId} onChange={e => setNewDroneData({ ...newDroneData, uniqueId: e.target.value })} className="w-full p-3 border rounded-md" />
+                            
+//                             <div>
+//                                 <label htmlFor="droneStatus" className="block text-sm font-medium text-gray-700">Initial Status</label>
+//                                 <select
+//                                     id="droneStatus"
+//                                     value={newDroneData.status}
+//                                     onChange={e => setNewDroneData({ ...newDroneData, status: e.target.value })}
+//                                     className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm"
+//                                 >
+//                                     <option value="Offline">Offline</option>
+//                                     <option value="Online">Online</option>
+//                                 </select>
+//                             </div>
+//                         </div>
+//                         <div className="flex justify-end space-x-4 mt-8">
+//                             <button onClick={() => setIsAddModalOpen(false)} className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+//                             <button onClick={handleSaveNewDrone} className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Drone</button>
+//                         </div>
+//                     </div>
+//                 </div>
+//             )}
+//         </div>
+//     );
+// };
+const HlsPlayer = ({ src }) => {
+    const videoRef = useRef(null);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        let hls;
+
+        if (Hls.isSupported()) {
+            hls = new Hls();
+            hls.loadSource(src);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(() => {
+                    console.log("User interaction may be needed to play the video.");
+                });
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Fallback for native HLS support (like Safari)
+            video.src = src;
+            video.addEventListener('loadedmetadata', () => {
+                video.play().catch(() => {
+                    console.log("User interaction may be needed to play the video.");
+                });
+            });
+        }
+
+        // Cleanup function to destroy the HLS instance when the component unmounts
+        return () => {
+            if (hls) {
+                hls.destroy();
+            }
+        };
+    }, [src]); // Re-run this effect if the src URL changes
+
+    return <video ref={videoRef} controls style={{ width: '100%', height: '100%' }} muted />;
+};
+
+
+const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage, onAddDrone, onRemoveDrone }) => {
+    const [selectedDroneId, setSelectedDroneId] = useState('');
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newDroneData, setNewDroneData] = useState({ id: '', name: '', uniqueId: '', status: 'Offline' });
+
     useEffect(() => {
         if (drones.length > 0 && !drones.find(d => d.id === selectedDroneId)) {
             setSelectedDroneId(drones[0].id);
+        } else if (drones.length === 0) {
+            setSelectedDroneId('');
         }
-    }, [drones]);
+    }, [drones, selectedDroneId]);
 
+    const currentTelemetry = liveTelemetry[selectedDroneId] || {};
+    const selectedDrone = drones.find(d => d.id === selectedDroneId);
     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
-
-    // The URL is now constructed safely, ensuring selectedDroneId is not empty.
     const streamUrl = selectedDroneId ? `http://96.9.130.64:8000/live/${selectedDroneId}/index.m3u8` : null;
 
     const handleCommand = (command, params = {}) => {
-        if (!selectedDroneId) {
-            displayMessage("No drone selected.", 'error');
-            return;
-        }
-        if (!isSelectedDroneOnline) {
-            displayMessage(`Cannot send command: Drone ${selectedDroneId} is offline.`, 'error');
+        if (!selectedDroneId || !isSelectedDroneOnline) {
+            displayMessage(`Drone ${selectedDroneId} is offline.`, 'error');
             return;
         }
         sendDroneCommand(selectedDroneId, command, params);
+    };
+
+    const handleRemoveClick = () => {
+        if (!selectedDroneId) return;
+        if (window.confirm(`Are you sure you want to remove drone ${selectedDrone.name}?`)) {
+            onRemoveDrone(selectedDroneId);
+        }
+    };
+    
+    const handleSaveNewDrone = () => {
+        if (!newDroneData.id || !newDroneData.name || !newDroneData.uniqueId) {
+            displayMessage("Please fill out all fields.", 'error');
+            return;
+        }
+        onAddDrone(newDroneData);
+        setIsAddModalOpen(false);
+        setNewDroneData({ id: '', name: '', uniqueId: '', status: 'Offline' }); 
     };
 
     return (
@@ -2365,7 +2609,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                         id="drone-select"
                         value={selectedDroneId}
                         onChange={(e) => setSelectedDroneId(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+                        className="p-2 border border-gray-300 rounded-md bg-gray-50"
                     >
                         {drones.length > 0 ? (
                             drones.map(drone => (
@@ -2378,15 +2622,23 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isSelectedDroneOnline ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                         {isSelectedDroneOnline ? 'Online' : 'Offline'}
                     </span>
+                    <div className="flex items-center space-x-2 border-l pl-3 ml-1">
+                        <button onClick={() => setIsAddModalOpen(true)} className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600" title="Add New Drone">
+                            <Plus size={18} />
+                        </button>
+                        <button onClick={handleRemoveClick} disabled={!selectedDroneId} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 disabled:bg-gray-400" title="Remove Selected Drone">
+                            <Trash2 size={18} />
+                        </button>
+                    </div>
                 </div>
                 <div className="flex space-x-2">
-                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('takeoff')} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400">
                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
                     </button>
-                    <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400">
                         <Home className="w-5 h-5 mr-2" /> Land
                     </button>
-                    <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400">
                         <Camera className="w-5 h-5 mr-2" /> Take Photo
                     </button>
                 </div>
@@ -2394,17 +2646,10 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
                 <div className="lg:col-span-2 bg-black rounded-xl shadow-md flex items-center justify-center text-gray-400">
-                    {/* This check is now safer and will only render the player when ready */}
+                    {/* --- FINAL FIX IS HERE --- */}
+                    {/* We now use our new, more reliable HlsPlayer component */}
                     {isSelectedDroneOnline && streamUrl ? (
-                        <ReactPlayer
-                            url={streamUrl}
-                            playing={true}
-                            muted={true}
-                            width='100%'
-                            height='100%'
-                            controls={true}
-                            config={{ file: { forceHLS: true } }}
-                        />
+                        <HlsPlayer src={streamUrl} />
                     ) : (
                         <span>Live feed is offline or no drone selected.</span>
                     )}
@@ -2412,20 +2657,54 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                 <div className="lg:col-span-1 flex flex-col space-y-6">
                     <div className="bg-white rounded-xl shadow-md p-4 flex-1">
                         <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
-                        <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
+                        <div className="bg-gray-200 h-full rounded-md flex items-center justify-center">
+                             <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
+                        </div>
                     </div>
                     <div className="bg-white rounded-xl shadow-md p-4">
                         <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
-                        <p>Altitude: {currentTelemetry.altitude?.toFixed(1) || 0}m</p>
-                        <p>Speed: {currentTelemetry.speed?.toFixed(1) || 0} m/s</p>
-                        <p>Battery: {currentTelemetry.battery_percent?.toFixed(0) || 0}%</p>
-                        <p>Status: {currentTelemetry.status || 'N/A'}</p>
+                        <div className="space-y-2 text-sm text-gray-700">
+                            <p className="flex justify-between"><span><Gauge size={14} className="inline mr-2" />Altitude:</span> <span className="font-semibold">{currentTelemetry.altitude?.toFixed(1) || 0} m</span></p>
+                            <p className="flex justify-between"><span><Activity size={14} className="inline mr-2" />Speed:</span> <span className="font-semibold">{currentTelemetry.speed?.toFixed(1) || 0} m/s</span></p>
+                            <p className="flex justify-between"><span><Battery size={14} className="inline mr-2" />Battery:</span> <span className="font-semibold">{currentTelemetry.battery_percent?.toFixed(0) || 0} %</span></p>
+                            <p className="flex justify-between"><span><MapPin size={14} className="inline mr-2" />Status:</span> <span className="font-semibold">{currentTelemetry.status || 'N/A'}</span></p>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+                        <h3 className="text-2xl font-bold mb-6">Add New Drone</h3>
+                        <div className="space-y-4">
+                            <input type="text" placeholder="Drone ID (e.g., d4)" value={newDroneData.id} onChange={e => setNewDroneData({ ...newDroneData, id: e.target.value })} className="w-full p-3 border rounded-md" />
+                            <input type="text" placeholder="Drone Name (e.g., AeroScout)" value={newDroneData.name} onChange={e => setNewDroneData({ ...newDroneData, name: e.target.value })} className="w-full p-3 border rounded-md" />
+                            <input type="text" placeholder="Unique ID (e.g., DRN-AD-004)" value={newDroneData.uniqueId} onChange={e => setNewDroneData({ ...newDroneData, uniqueId: e.target.value })} className="w-full p-3 border rounded-md" />
+                            <div>
+                                <label htmlFor="droneStatus" className="block text-sm font-medium text-gray-700">Initial Status</label>
+                                <select
+                                    id="droneStatus"
+                                    value={newDroneData.status}
+                                    onChange={e => setNewDroneData({ ...newDroneData, status: e.target.value })}
+                                    className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm"
+                                >
+                                    <option value="Offline">Offline</option>
+                                    <option value="Online">Online</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex justify-end space-x-4 mt-8">
+                            <button onClick={() => setIsAddModalOpen(false)} className="px-5 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                            <button onClick={handleSaveNewDrone} className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Drone</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
 
 
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
@@ -2578,11 +2857,13 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
 // These components use the generic AssetList, AssetDetails, AddItemForm, and MaintenanceHistoryView
 // They receive their specific data and handlers as props.
 
-const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, displayMessage }) => {
+const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, handleUpdateDroneStatus, displayMessage }) => {
+    // State for managing views (list, details, add, edit) and modals
     const [currentView, setCurrentView] = useState('list');
     const [selectedDrone, setSelectedDrone] = useState(null);
     const [confirmingDeleteDrone, setConfirmingDeleteDrone] = useState(null);
 
+    // Handlers for changing views and managing modals
     const handleAddDroneClick = () => setCurrentView('add-drone');
     const handleViewDroneDetails = (id) => {
         setSelectedDrone(drones.find(drone => drone.id === id));
@@ -2609,6 +2890,7 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
         setCurrentView('maintenance-history');
     };
 
+    // Handler for saving a new or edited drone
     const handleSaveDrone = async (updatedDroneData) => {
         let success = false;
         if (currentView === 'add-drone') {
@@ -2627,6 +2909,26 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
         setSelectedDrone(null);
     };
 
+    // NEW: Handler for toggling the online/offline status
+    const handleToggleStatus = (drone) => {
+        const newStatus = (drone.status === 'Online' || drone.status === 'Deployed') ? 'Offline' : 'Online';
+        handleUpdateDroneStatus(drone.id, newStatus);
+    };
+
+    // Helper function for styling the status badges
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Online':
+            case 'Deployed':
+                return 'bg-green-100 text-green-800';
+            case 'In Maintenance':
+                return 'bg-yellow-100 text-yellow-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    // Conditional rendering based on the current view
     if (currentView === 'add-drone') {
         return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" />;
     }
@@ -2658,16 +2960,64 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
         return <MaintenanceHistoryView asset={selectedDrone} onBack={() => setCurrentView('details')} />;
     }
 
+    // Main list view, now using AssetList which contains the table with the toggle
     return (
-        <AssetList
-            title="Drone Inventory"
-            assets={drones}
-            onAddItem={handleAddDroneClick}
-            onViewDetails={handleViewDroneDetails}
-            assetTypeIcon={Drone}
-        />
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Drones Inventory</h2>
+                <button onClick={handleAddDroneClick} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 shadow-md">
+                    <PlusCircle className="w-5 h-5 mr-2" /> Add Drone
+                </button>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            {['ID', 'Name', 'Status', 'Online Status', 'Flight Hours', 'Location', 'Actions'].map(h => (
+                                <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {drones.map((drone) => (
+                            <tr key={drone.id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueId}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.name}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(drone.status)}`}>
+                                        {drone.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <label htmlFor={`toggle-${drone.id}`} className="flex items-center cursor-pointer">
+                                        <div className="relative">
+                                            <input 
+                                                type="checkbox" 
+                                                id={`toggle-${drone.id}`} 
+                                                className="sr-only" 
+                                                checked={drone.status === 'Online' || drone.status === 'Deployed'} 
+                                                onChange={() => handleToggleStatus(drone)} 
+                                            />
+                                            <div className="block bg-gray-600 w-14 h-8 rounded-full"></div>
+                                            <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${drone.status === 'Online' || drone.status === 'Deployed' ? 'transform translate-x-full bg-green-400' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.flightHours}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.lastLocation}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <button onClick={() => handleViewDroneDetails(drone.id)} className="text-blue-600 hover:text-blue-900 mr-3"><Eye className="w-5 h-5" /></button>
+                                    <button onClick={() => handleDeleteDrone(drone.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5" /></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     );
 };
+
 
 const GroundStations = ({ groundStations, handleAddGS, handleUpdateGS, handleDeleteGS, displayMessage }) => {
     const [currentView, setCurrentView] = useState('list');
@@ -3108,7 +3458,7 @@ const Sidebar = ({ onLogout, userRole }) => {
     );
 };
 
-// In src/App.js
+
 
 const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }) => {
     const navigate = useNavigate(); // Hook for navigation
@@ -3587,7 +3937,18 @@ const App = () => {
     const [authToken, setAuthToken] = useState(localStorage.getItem('authToken')); // Store token
     const [userRole, setUserRole] = useState(localStorage.getItem('userRole')); // Store user role
     const navigate = useNavigate();
-
+    const handleUpdateDroneStatus = async (droneId, newStatus) => {
+    try {
+        // The API call will trigger the backend to broadcast the update
+        await authenticatedApiRequest(`/api/drones/${droneId}/status`, 'POST', { status: newStatus });
+        displayMessage(`Drone ${droneId} status set to ${newStatus}.`, 'success');
+        // No need to set state here, WebSocket will handle it
+        return true;
+    } catch (error) {
+        displayMessage(`Failed to update drone status: ${error.message}`, 'error');
+        return false;
+    }
+};
     // Centralized Data State
     const [drones, setDrones] = useState([]);
     const [users, setUsers] = useState([]); 
@@ -3623,64 +3984,64 @@ const App = () => {
     }, [authToken]);
 
     // --- Data Fetching & WebSocket Logic ---
-    useEffect(() => {
+      useEffect(() => {
         if (!isAuthenticated || !authToken) return; // Only fetch if authenticated and token exists
 
        const fetchAllInitialData = async () => {
-    try {
-        const apiCalls = [
-            authenticatedApiRequest('/api/drones'),
-            authenticatedApiRequest('/api/missions'),
-            authenticatedApiRequest('/api/media'),
-            authenticatedApiRequest('/api/incidents'),
-            authenticatedApiRequest('/api/maintenance_parts'),
-            authenticatedApiRequest('/api/notifications'),
-            authenticatedApiRequest('/api/connected_drones'),
-            authenticatedApiRequest('/api/ground_stations'),
-            authenticatedApiRequest('/api/equipment'),
-            authenticatedApiRequest('/api/batteries'),
-            authenticatedApiRequest('/api/files'),
-            authenticatedApiRequest('/api/checklists'),
-            authenticatedApiRequest('/api/tags'),
-            authenticatedApiRequest('/api/user/profile'),
-        ];
+            try {
+                const apiCalls = [
+                    authenticatedApiRequest('/api/drones'),
+                    authenticatedApiRequest('/api/missions'),
+                    authenticatedApiRequest('/api/media'),
+                    authenticatedApiRequest('/api/incidents'),
+                    authenticatedApiRequest('/api/maintenance_parts'),
+                    authenticatedApiRequest('/api/notifications'),
+                    authenticatedApiRequest('/api/connected_drones'),
+                    authenticatedApiRequest('/api/ground_stations'),
+                    authenticatedApiRequest('/api/equipment'),
+                    authenticatedApiRequest('/api/batteries'),
+                    authenticatedApiRequest('/api/files'),
+                    authenticatedApiRequest('/api/checklists'),
+                    authenticatedApiRequest('/api/tags'),
+                    authenticatedApiRequest('/api/user/profile'),
+                ];
 
-        // If the user is an admin, add the call to fetch all users
-        if (userRole === 'admin') {
-            apiCalls.push(authenticatedApiRequest('/api/admin/users'));
-        }
+                // If the user is an admin, add the call to fetch all users
+                if (userRole === 'admin') {
+                    apiCalls.push(authenticatedApiRequest('/api/admin/users'));
+                }
 
-        const responses = await Promise.all(apiCalls);
+                const responses = await Promise.all(apiCalls);
 
-        // Assign all the existing data
-        setDrones(responses[0]);
-        setMissions(responses[1]);
-        setMediaItems(responses[2]);
-        setIncidents(responses[3]);
-        setMaintenanceParts(responses[4]);
-        setNotifications(responses[5]);
-        setConnectedDrones(responses[6]);
-        setGroundStations(responses[7]);
-        setEquipment(responses[8]);
-        setBatteries(responses[9]);
-        setFiles(responses[10]);
-        setChecklists(responses[11]);
-        setTags(responses[12]);
-        setUserProfile(responses[13]);
+                // Assign all the existing data
+                setDrones(responses[0]);
+                setMissions(responses[1]);
+                setMediaItems(responses[2]);
+                setIncidents(responses[3]);
+                setMaintenanceParts(responses[4]);
+                setNotifications(responses[5]);
+                setConnectedDrones(responses[6]);
+                setGroundStations(responses[7]);
+                setEquipment(responses[8]);
+                setBatteries(responses[9]);
+                setFiles(responses[10]);
+                setChecklists(responses[11]);
+                setTags(responses[12]);
+                setUserProfile(responses[13]);
 
-        // If the user is an admin, set the users state from the last API call
-        if (userRole === 'admin') {
-            setUsers(responses[14]);
-        }
+                // If the user is an admin, set the users state from the last API call
+                if (userRole === 'admin') {
+                    setUsers(responses[14]);
+                }
 
-    } catch (error) {
-        console.error("Error fetching initial data:", error);
-        displayMessage(`Failed to load system data: ${error.message}`, 'error');
-        if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
-            handleLogout();
-        }
-    }
-};
+            } catch (error) {
+                console.error("Error fetching initial data:", error);
+                displayMessage(`Failed to load system data: ${error.message}`, 'error');
+                if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
+                    handleLogout();
+                }
+            }
+        };
 
         fetchAllInitialData();
 
@@ -3692,7 +4053,6 @@ const App = () => {
         socket.on('connect', () => {
             console.log('Connected to WebSocket');
             socket.emit('register_as_frontend');
-            // No need to fetch connected_drones here again, already done in fetchAllInitialData
         });
 
         socket.on('disconnect', () => {
@@ -3738,10 +4098,8 @@ const App = () => {
         });
 
         socket.on('new_media_available', media => {
-
-        setMediaItems(prev => [media, ...prev]);
+            setMediaItems(prev => [media, ...prev]);
         });
-
 
         socket.on('notification_updated', updatedNotif => {
             setNotifications(prev => prev.map(n => n.id === updatedNotif.id ? updatedNotif : n));
@@ -3749,6 +4107,17 @@ const App = () => {
 
         socket.on('notification_deleted', deletedNotif => {
             setNotifications(prev => prev.filter(n => n.id !== deletedNotif.id));
+        });
+
+        // This is the new listener you added for real-time status updates
+        socket.on('drone_status_updated', (updatedDrone) => {
+            setDrones(prev => prev.map(d => d.id === updatedDrone.id ? updatedDrone : d));
+            // Also update the connected drones list based on the new status
+            if (updatedDrone.status === 'Online' || updatedDrone.status === 'Deployed') {
+                setConnectedDrones(prev => [...new Set([...prev, updatedDrone.id])]);
+            } else {
+                setConnectedDrones(prev => prev.filter(id => id !== updatedDrone.id));
+            }
         });
 
         return () => socket.disconnect();
@@ -3967,13 +4336,17 @@ const App = () => {
                                 <Route path="/missions" element={<Missions missions={missions} drones={drones} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission} displayMessage={displayMessage} />} />
 
                                 {/* Assets */}
-                                <Route path="/assets/drones" element={<Drones
-                                    drones={drones}
-                                    handleAddDrone={handleAddDrone}
-                                    handleUpdateDrone={handleUpdateDrone}
-                                    handleDeleteDrone={handleDeleteDrone}
-                                    displayMessage={displayMessage}
-                                />} />
+                                <Route 
+                                    path="/assets/drones" 
+                                    element={<Drones
+                                        drones={drones}
+                                        handleAddDrone={handleAddDrone}
+                                        handleUpdateDrone={handleUpdateDrone}
+                                        handleDeleteDrone={handleDeleteDrone}
+                                        handleUpdateDroneStatus={handleUpdateDroneStatus} // This is the new prop you added
+                                        displayMessage={displayMessage}
+                                    />} 
+                                />
                                 <Route path="/assets/ground-stations" element={<GroundStations
                                     groundStations={groundStations}
                                     handleAddGS={handleAddGroundStation}
@@ -4061,37 +4434,38 @@ const App = () => {
                                 />} />
 
                               {userRole === 'admin' && (
-    <Route
-        path="/admin-panel"
-        element={
-            <AdminPanelContent
-                displayMessage={displayMessage}
-                authToken={authToken}
-                // Pass down all necessary data and their CRUD handlers
-                users={users} // Pass the 'users' state directly from App.js
-                handleAddUser={(userData) => handleAddItem('/api/admin/users', userData, setUsers, 'User')} // Use setUsers directly
-                handleUpdateUser={(id, data) => handleUpdateItem('/api/admin/users', id, data, setUsers, 'User')} // Use setUsers directly
-                handleDeleteUser={(id) => handleDeleteItem('/api/admin/users', id, setUsers, 'user')} // Use setUsers directly
+                                <Route
+                                    path="/admin-panel"
+                                    element={
+                                        <AdminPanelContent
+                                            displayMessage={displayMessage}
+                                            authToken={authToken}
+                                            // Pass down all necessary data and their CRUD handlers
+                                            users={users} // Pass the 'users' state directly from App.js
+                                            handleAddUser={(userData) => handleAddItem('/api/admin/users', userData, setUsers, 'User')} // Use setUsers directly
+                                            handleUpdateUser={(id, data) => handleUpdateItem('/api/admin/users', id, data, setUsers, 'User')} // Use setUsers directly
+                                            handleDeleteUser={(id) => handleDeleteItem('/api/admin/users', id, setUsers, 'user')} // Use setUsers directly
 
-                drones={drones} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone}
-                groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
-                equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
-                batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
-                missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
-                mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
-                files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
-                checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
-                tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
-                incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
-                maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
-            />
-        }
-    />
-)}
+                                            drones={drones} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone}
+                                            groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
+                                            equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
+                                            batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
+                                            missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
+                                            mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
+                                            files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
+                                            checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
+                                            tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
+                                            incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
+                                            maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
+                                        />
+                                    }
+                                />
+                            )}
 
                                 <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} />} />
                             </Routes>
                         </main>
+
                     </div>
                 </>
             ) : (

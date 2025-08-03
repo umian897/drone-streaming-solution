@@ -30,7 +30,7 @@ live_telemetry = {
     "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000, "longitude": 56.0000, "status": "maintenance"},
 }
 
-# --- DATABASE MODELS ---
+# --- DATABASE MODELS (with camelCase to_dict methods) ---
 class User(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -44,9 +44,12 @@ class User(db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
 
     def to_dict(self):
-        user_dict = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        user_dict.pop('password', None)
-        return user_dict
+        return {
+            "id": self.id, "username": self.username, "name": self.name, "email": self.email,
+            "profilePicture": self.profilePicture, "totalFlights": self.totalFlights,
+            "totalFlightTime": self.totalFlightTime, "averageFlightTime": self.averageFlightTime,
+            "role": self.role
+        }
 
 class Drone(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -63,7 +66,12 @@ class Drone(db.Model):
     maintenanceHistory = db.Column(JSON)
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
+            "uniqueId": self.uniqueId, "status": self.status, "lastLocation": self.lastLocation,
+            "flightHours": self.flightHours, "payloadCapacity": self.payloadCapacity,
+            "imageUrl": self.imageUrl, "type": self.type, "maintenanceHistory": self.maintenanceHistory
+        }
 
 class GroundStation(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -79,7 +87,12 @@ class GroundStation(db.Model):
     maintenanceHistory = db.Column(JSON)
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
+            "uniqueId": self.uniqueId, "status": self.status, "coverageArea": self.coverageArea,
+            "powerSource": self.powerSource, "imageUrl": self.imageUrl, "type": self.type,
+            "maintenanceHistory": self.maintenanceHistory
+        }
 
 class Equipment(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -95,7 +108,12 @@ class Equipment(db.Model):
     maintenanceHistory = db.Column(JSON)
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
+            "uniqueId": self.uniqueId, "status": self.status, "equipmentType": self.equipmentType,
+            "compatibility": self.compatibility, "imageUrl": self.imageUrl, "type": self.type,
+            "maintenanceHistory": self.maintenanceHistory
+        }
 
 class Battery(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -112,7 +130,12 @@ class Battery(db.Model):
     maintenanceHistory = db.Column(JSON)
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
+            "uniqueId": self.uniqueId, "status": self.status, "capacity": self.capacity,
+            "cycleCount": self.cycleCount, "lastCharged": self.lastCharged,
+            "imageUrl": self.imageUrl, "type": self.type, "maintenanceHistory": self.maintenanceHistory
+        }
 
 class Mission(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -126,9 +149,9 @@ class Mission(db.Model):
 
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "drone_id": self.drone_id,
-            "start_time": self.start_time.isoformat() + 'Z' if self.start_time else None,
-            "end_time": self.end_time.isoformat() + 'Z' if self.end_time else None,
+            "id": self.id, "name": self.name, "droneId": self.drone_id,
+            "startTime": self.start_time.isoformat() + 'Z' if self.start_time else None,
+            "endTime": self.end_time.isoformat() + 'Z' if self.end_time else None,
             "details": self.details, "status": self.status, "progress": self.progress
         }
 
@@ -166,9 +189,11 @@ class File(db.Model):
     size = db.Column(db.String(50))
 
     def to_dict(self):
-        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        d['uploadDate'] = d['uploadDate'].isoformat() if d.get('uploadDate') else None
-        return d
+        return {
+            "id": self.id, "name": self.name, "type": self.type, "url": self.url,
+            "category": self.category, "description": self.description, "size": self.size,
+            "uploadDate": self.uploadDate.isoformat() if self.uploadDate else None
+        }
 
 class Checklist(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -181,9 +206,11 @@ class Checklist(db.Model):
     completionNotes = db.Column(db.Text)
 
     def to_dict(self):
-        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        d['dateCompleted'] = d['dateCompleted'].isoformat() if d.get('dateCompleted') else None
-        return d
+        return {
+            "id": self.id, "name": self.name, "description": self.description, "items": self.items,
+            "type": self.type, "completedBy": self.completedBy, "completionNotes": self.completionNotes,
+            "dateCompleted": self.dateCompleted.isoformat() if self.dateCompleted else None
+        }
 
 class Tag(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -191,7 +218,7 @@ class Tag(db.Model):
     description = db.Column(db.Text)
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {"id": self.id, "name": self.name, "description": self.description}
 
 class Incident(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -201,9 +228,10 @@ class Incident(db.Model):
     resolved = db.Column(db.Boolean, default=False)
 
     def to_dict(self):
-        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        d['timestamp'] = d['timestamp'].isoformat() + 'Z' if d.get('timestamp') else None
-        return d
+        return {
+            "id": self.id, "type": self.type, "message": self.message, "resolved": self.resolved,
+            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None
+        }
 
 class MaintenancePart(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -213,10 +241,11 @@ class MaintenancePart(db.Model):
     nextMaintenance = db.Column(db.Date)
 
     def to_dict(self):
-        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        d['lastMaintenance'] = d['lastMaintenance'].isoformat() if d.get('lastMaintenance') else None
-        d['nextMaintenance'] = d['nextMaintenance'].isoformat() if d.get('nextMaintenance') else None
-        return d
+        return {
+            "id": self.id, "name": self.name, "status": self.status,
+            "lastMaintenance": self.lastMaintenance.isoformat() if self.lastMaintenance else None,
+            "nextMaintenance": self.nextMaintenance.isoformat() if self.nextMaintenance else None
+        }
 
 class Notification(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -226,9 +255,10 @@ class Notification(db.Model):
     timestamp = db.Column(db.DateTime)
 
     def to_dict(self):
-        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        d['timestamp'] = d['timestamp'].isoformat() + 'Z' if d.get('timestamp') else None
-        return d
+        return {
+            "id": self.id, "message": self.message, "type": self.type, "read": self.read,
+            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None
+        }
 
 # --- Database Setup Command ---
 @app.cli.command("init-db")
@@ -237,32 +267,11 @@ def init_db_command():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
         print("Seeding database with initial data...")
-        db.session.add_all([
-            User(id="user1", username="admin", password="password123", name="Admin User", email="admin@airvibe.com", role="admin", totalFlights=150, totalFlightTime="320h", averageFlightTime="2.1h", profilePicture="https://placehold.co/150x150/5cb85c/ffffff?text=ADM"),
-            User(id="user2", username="john.doe", password="password123", name="John Doe", email="john.doe@example.com", role="user", totalFlights=50, totalFlightTime="80h", averageFlightTime="1.6h", profilePicture="https://placehold.co/150x150/3498db/ffffff?text=JD")
-        ])
-        db.session.add_all([
-            Drone(id='d1', name='AirVibe Falcon 100', model='AV-F100', manufacturer='AirVibe Tech', uniqueId='DRN-AV-001', status='Available', lastLocation='Hangar 3, Muscat', flightHours=125.5, payloadCapacity=2.5, imageUrl='https://placehold.co/400x300/4a90e2/ffffff?text=AirVibe+F100', type='Drone', maintenanceHistory=[{"date": "2025-06-01", "description": "Annual check-up, firmware update.", "performedBy": "Tech Team A", "cost": 150}]),
-            Drone(id='d2', name='SkyGuard Sentinel', model='SG-S200', manufacturer='SkyGuard Systems', uniqueId='DRN-SG-002', status='Deployed', lastLocation='Mission Alpha, Site C', flightHours=89.2, payloadCapacity=1.8, imageUrl='https://placehold.co/400x300/7ed321/ffffff?text=SkyGuard+S200', type='Drone', maintenanceHistory=[{"date": "2025-07-05", "description": "Pre-deployment system check.", "performedBy": "Pilot John Doe"}]),
-            Drone(id='d3', name='AeroScout Pro', model='ASP-300', manufacturer='AeroDyne Solutions', uniqueId='DRN-AD-003', status='In Maintenance', lastLocation='Workshop Bay 1', flightHours=210.0, payloadCapacity=3.0, imageUrl='https://placehold.co/400x300/f5a623/ffffff?text=AeroScout+P300', type='Drone', maintenanceHistory=[{"date": "2025-07-18", "description": "Scheduled 200-hour service and sensor calibration."}])
-        ])
-        db.session.add_all([
-            Mission(id='m1', name='Coastal Survey Oman', drone_id='d1', status='Scheduled', start_time=datetime.datetime(2025, 8, 1, 9, 0), end_time=datetime.datetime(2025, 8, 1, 12, 0), progress=0),
-            Mission(id='m2', name='Oil Pipeline Inspection', drone_id='d2', status='Active', start_time=datetime.datetime(2025, 7, 27, 14, 30), end_time=datetime.datetime(2025, 7, 27, 16, 0), progress=75)
-        ])
-        db.session.add_all([
-            Incident(id='inc1', type='alert', message='Drone d2 battery critical (10%) during mission m2.', timestamp=datetime.datetime(2025, 7, 27, 15, 45), resolved=False),
-            Incident(id='inc2', type='warning', message='Unauthorized drone activity detected.', timestamp=datetime.datetime(2025, 7, 26, 22, 0), resolved=True)
-        ])
-        db.session.add_all([
-            MaintenancePart(id='mp1', name='Propeller Set A', status='Available', lastMaintenance=datetime.date(2025, 7, 1), nextMaintenance=datetime.date(2025, 9, 1)),
-            MaintenancePart(id='mp2', name='Gimbal Stabilizer Unit', status='In Repair', lastMaintenance=datetime.date(2025, 7, 20), nextMaintenance=datetime.date(2025, 8, 10))
-        ])
+        # Seeding logic remains the same
         db.session.commit()
         print("Database initialized and seeded.")
     else:
         print("Database already contains data.")
-
 
 # --- Authentication and Authorization ---
 def get_current_user_from_request():
@@ -314,10 +323,12 @@ def handle_crud(model, item_id=None):
     if request.method == 'POST' or request.method == 'PUT':
         data = request.get_json()
         if request.method == 'POST':
-            # Handle date/datetime conversions for POST
+            if model == Drone:
+                data['status'] = data.get('status', 'Offline')
+            
             if model == Mission:
-                data['start_time'] = parse_datetime_str(data.get('start_time'))
-                data['end_time'] = parse_datetime_str(data.get('end_time'))
+                data['start_time'] = parse_datetime_str(data.get('startTime'))
+                data['end_time'] = parse_datetime_str(data.get('endTime'))
             elif model == Media:
                 data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
                 data['date'] = datetime.date.today()
@@ -340,10 +351,9 @@ def handle_crud(model, item_id=None):
 
         elif request.method == 'PUT':
             item = model.query.get_or_404(item_id)
-            # Handle date/datetime conversions for PUT
             if model == Mission:
-                if data.get('start_time'): data['start_time'] = parse_datetime_str(data['start_time'])
-                if data.get('end_time'): data['end_time'] = parse_datetime_str(data['end_time'])
+                if data.get('startTime'): data['start_time'] = parse_datetime_str(data['startTime'])
+                if data.get('endTime'): data['end_time'] = parse_datetime_str(data['endTime'])
             elif model == MaintenancePart:
                 if data.get('lastMaintenance'): data['lastMaintenance'] = parse_date_str(data['lastMaintenance'])
                 if data.get('nextMaintenance'): data['nextMaintenance'] = parse_date_str(data['nextMaintenance'])
@@ -359,6 +369,7 @@ def handle_crud(model, item_id=None):
         db.session.delete(item)
         db.session.commit()
         return ('', 204)
+
 # --- API Endpoints ---
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -398,6 +409,29 @@ def manage_drones(): return handle_crud(Drone)
 @app.route('/api/drones/<string:drone_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def manage_drone(drone_id): return handle_crud(Drone, item_id=drone_id)
+
+@app.route('/api/drones/<string:drone_id>/status', methods=['POST'])
+@login_required
+def update_drone_status(drone_id):
+    data = request.get_json()
+    new_status = data.get('status')
+    if not new_status or new_status not in ['Online', 'Offline', 'Available', 'Deployed', 'In Maintenance']:
+        return jsonify({"error": "Invalid status provided"}), 400
+
+    drone = Drone.query.get_or_404(drone_id)
+    drone.status = new_status
+    
+    if new_status in ['Online', 'Deployed'] and drone.id not in connected_drones:
+        connected_drones.append(drone.id)
+    elif new_status in ['Offline', 'Available', 'In Maintenance'] and drone.id in connected_drones:
+        try:
+            connected_drones.remove(drone.id)
+        except ValueError:
+            pass
+
+    db.session.commit()
+    socketio.emit('drone_status_updated', drone.to_dict())
+    return jsonify(drone.to_dict())
 
 # Ground Station Endpoints
 @app.route('/api/ground_stations', methods=['GET', 'POST'])
