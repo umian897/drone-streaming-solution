@@ -167,7 +167,6 @@ class Mission(db.Model):
             "endTime": self.end_time.isoformat() + 'Z' if self.end_time else None,
             "details": self.details, "status": self.status, "progress": self.progress
         }
-
 class Media(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String(120))
