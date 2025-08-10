@@ -282,10 +282,13 @@ def get_current_user_from_request():
     elif auth_token == "mock-jwt-token-user":
         return User.query.filter_by(username='john.doe').first()
     return None
-
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow OPTIONS requests to pass through without an authentication check
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         user = get_current_user_from_request()
         if not user: return jsonify({"error": "Authentication required"}), 401
         request.current_user = user
@@ -295,6 +298,10 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow OPTIONS requests to pass through without an authentication check
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         user = get_current_user_from_request()
         if not user: return jsonify({"error": "Authentication required"}), 401
         if user.role != "admin": return jsonify({"error": "Admin access required"}), 403
