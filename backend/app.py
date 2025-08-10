@@ -4,12 +4,15 @@ import random
 import time
 import threading
 from functools import wraps
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import JSON
 import os
+import subprocess
+import shutil
+import atexit
 
 # --- App Initialization ---
 app = Flask(__name__)
@@ -23,14 +26,24 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # --- In-Memory State for Live Data (Not stored in DB) ---
-connected_drones = ["d1"] 
+# Initialize with d1 to ensure it's available on startup
+connected_drones = ["d1"]
 live_telemetry = {
     "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859, "longitude": 58.4059, "status": "flying"},
     "d2": {"altitude": 0, "speed": 0, "battery_percent": 90, "latitude": 24.0000, "longitude": 57.0000, "status": "landed"},
     "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000, "longitude": 56.0000, "status": "maintenance"},
 }
 
-# --- DATABASE MODELS (with camelCase to_dict methods) ---
+# --- Live Streaming Configuration ---
+HLS_ROOT = os.path.join(basedir, 'hls_streams')
+if not os.path.exists(HLS_ROOT):
+    os.makedirs(HLS_ROOT)
+
+active_ffmpeg_processes = {}
+# FIX: Explicitly define the path to the FFmpeg executable
+FFMPEG_PATH = '/opt/homebrew/bin/ffmpeg' # Use `which ffmpeg` in your terminal to find the correct path
+
+# --- DATABASE MODELS ---
 class User(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -282,6 +295,7 @@ def get_current_user_from_request():
     elif auth_token == "mock-jwt-token-user":
         return User.query.filter_by(username='john.doe').first()
     return None
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -607,6 +621,67 @@ def command_drone(drone_id):
     socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": live_telemetry.get(drone_id, {})})
     return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
 
+# --- Live Streaming Endpoints ---
+@app.route('/api/stream/<string:drone_id>/<string:action>', methods=['POST'])
+@login_required
+def manage_stream(drone_id, action):
+    global active_ffmpeg_processes
+
+    stream_dir = os.path.join(HLS_ROOT, drone_id)
+    hls_playlist_path = os.path.join(stream_dir, 'index.m3u8')
+    rtmp_url = f"rtmp://localhost/live/{drone_id}"
+
+    if action == 'start':
+        if drone_id in active_ffmpeg_processes and active_ffmpeg_processes[drone_id].poll() is None:
+            return jsonify({"message": f"Stream for drone {drone_id} is already active."}), 200
+
+        if os.path.exists(stream_dir):
+            shutil.rmtree(stream_dir)
+        os.makedirs(stream_dir)
+
+        command = [
+            'ffmpeg',
+            '-i', rtmp_url,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-f', 'hls',
+            '-hls_time', '2',
+            '-hls_list_size', '3',
+            '-hls_flags', 'delete_segments',
+            '-start_number', '1',
+            hls_playlist_path
+        ]
+
+        try:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            active_ffmpeg_processes[drone_id] = process
+            print(f"Started FFmpeg for drone {drone_id}. HLS available at /hls_streams/{drone_id}/index.m3u8")
+            return jsonify({"message": f"Stream for drone {drone_id} started."}), 200
+        except FileNotFoundError:
+            return jsonify({"error": "FFmpeg not found. Please ensure it's installed and in your PATH."}), 500
+        except Exception as e:
+            print(f"Error starting FFmpeg for drone {drone_id}: {e}")
+            return jsonify({"error": f"Failed to start stream: {str(e)}"}), 500
+
+    elif action == 'stop':
+        if drone_id in active_ffmpeg_processes:
+            process = active_ffmpeg_processes[drone_id]
+            process.terminate() 
+            process.wait()
+            del active_ffmpeg_processes[drone_id]
+            if os.path.exists(stream_dir):
+                shutil.rmtree(stream_dir)
+            print(f"Stopped FFmpeg for drone {drone_id} and cleaned up HLS files.")
+            return jsonify({"message": f"Stream for drone {drone_id} stopped."}), 200
+        else:
+            return jsonify({"error": "No active stream found for drone {drone_id}."}), 404
+    else:
+        return jsonify({"error": "Invalid action. Use 'start' or 'stop'."}), 400
+
+@app.route('/hls_streams/<path:filename>')
+def serve_hls_stream(filename):
+    return send_from_directory(HLS_ROOT, filename)
+
 # --- Background Telemetry Simulation ---
 def simulate_drone_telemetry():
     print("Starting telemetry simulation thread...")
@@ -638,6 +713,27 @@ def simulate_drone_telemetry():
                 telemetry["battery_percent"] = max(0, telemetry.get("battery_percent", 90) - 0.5)
                 live_telemetry[drone_id] = telemetry
                 socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": telemetry})
+
+# --- Shutdown Hook ---
+def shutdown_ffmpeg_processes():
+    print("Shutting down all active FFmpeg processes...")
+    for drone_id, process in list(active_ffmpeg_processes.items()):
+        if process.poll() is None:
+            print(f"Terminating FFmpeg process for drone {drone_id}...")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print(f"Force killing FFmpeg process for drone {drone_id} due to timeout...")
+                process.kill()
+        
+        stream_dir = os.path.join(HLS_ROOT, drone_id)
+        if os.path.exists(stream_dir):
+            shutil.rmtree(stream_dir)
+        del active_ffmpeg_processes[drone_id]
+    print("All FFmpeg processes shut down.")
+
+atexit.register(shutdown_ffmpeg_processes)
 
 # --- Main Execution ---
 if __name__ == '__main__':

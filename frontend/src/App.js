@@ -2385,7 +2385,9 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
     const currentTelemetry = liveTelemetry[selectedDroneId] || {};
     const selectedDrone = drones.find(d => d.id === selectedDroneId);
     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
-    const streamUrl = selectedDroneId ? `http://96.9.130.64:8000/live/${selectedDroneId}/index.m3u8` : null;
+    
+    // FIX: The stream URL now points to your Flask backend's HLS endpoint
+    const streamUrl = selectedDroneId ? `${API_BASE_URL}/hls_streams/${selectedDroneId}/index.m3u8` : null;
 
     // Handler for sending commands
     const handleCommand = (command, params = {}) => {
@@ -2422,6 +2424,34 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         setNewDroneData({ id: '', name: '', uniqueId: '', status: 'Offline' }); 
     };
 
+    // FIX: New function to start the stream via backend API
+    const startStream = async () => {
+        if (!selectedDroneId) {
+            displayMessage("No drone selected to start streaming.", 'error');
+            return;
+        }
+        try {
+            await apiRequest(`/api/stream/${selectedDroneId}/start`, 'POST', null, localStorage.getItem('authToken'));
+            displayMessage(`Attempting to start stream for drone ${selectedDroneId}.`, 'info');
+        } catch (error) {
+            displayMessage(`Failed to start stream: ${error.message}`, 'error');
+        }
+    };
+    
+    // FIX: New function to stop the stream via backend API
+    const stopStream = async () => {
+        if (!selectedDroneId) {
+            displayMessage("No drone selected to stop streaming.", 'error');
+            return;
+        }
+        try {
+            await apiRequest(`/api/stream/${selectedDroneId}/stop`, 'POST', null, localStorage.getItem('authToken'));
+            displayMessage(`Attempting to stop stream for drone ${selectedDroneId}.`, 'info');
+        } catch (error) {
+            displayMessage(`Failed to stop stream: ${error.message}`, 'error');
+        }
+    };
+
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
@@ -2456,6 +2486,14 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     </div>
                 </div>
                 <div className="flex space-x-2">
+                    {/* FIX: Added Start/Stop Stream Buttons */}
+                    <button onClick={startStream} disabled={!selectedDroneId || isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md">
+                        <Play className="w-5 h-5 mr-2" /> Start Stream
+                    </button>
+                    <button onClick={stopStream} disabled={!selectedDroneId || !isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 transition-colors shadow-md">
+                        <Square className="w-5 h-5 mr-2" /> Stop Stream
+                    </button>
+
                     <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
                     </button>
@@ -2527,6 +2565,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         </div>
     );
 };
+
 
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
     const [showAddModal, setShowAddModal] = useState(false);
