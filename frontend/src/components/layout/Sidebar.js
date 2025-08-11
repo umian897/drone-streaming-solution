@@ -49,10 +49,10 @@ const Sidebar = ({ onLogout }) => {
           Dashboard
         </Link>
 
-        {/* Live Operations Link */}
+        {/* s Link */}
         <Link to="/live-operations" className={`flex items-center p-3 rounded-md text-sm font-medium transition duration-150 ${isActive('/live-operations') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
           <Video className="w-5 h-5 mr-3" />
-          Live Operations
+          s
         </Link>
 
         {/* Missions Link */}

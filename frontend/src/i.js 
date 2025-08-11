@@ -114,7 +114,7 @@ const UserManagement = () => <div className="text-3xl font-bold text-gray-800">U
 
 
 const AdminPanel = () => {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(true);
     const navigate = useNavigate();
 
     // Centralized state for all admin data

@@ -1,3 +1,4 @@
+
 // import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -115,7 +116,7 @@ const AssetList = ({ title, assets, onAddItem, onViewDetails, assetTypeIcon: Ass
     const filteredAssets = assets.filter(asset =>
         (asset.name && asset.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (asset.model && asset.model.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (asset.uniqueId && asset.uniqueId.toLowerCase().includes(searchTerm.toLowerCase()))
+        (asset.uniqueid && asset.uniqueid.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
@@ -168,7 +169,7 @@ const AssetList = ({ title, assets, onAddItem, onViewDetails, assetTypeIcon: Ass
                             <div className="p-4 flex-1 flex flex-col justify-between">
                                 <div>
                                     <h3 className="text-lg font-semibold text-gray-800 truncate">{asset.name}</h3>
-                                    <p className="text-sm text-gray-600">ID: {asset.uniqueId}</p>
+                                    <p className="text-sm text-gray-600">ID: {asset.uniqueid}</p>
                                     <p className="text-sm text-gray-600">Mfr: {asset.manufacturer}</p>
                                 </div>
                                 <div className="mt-3 flex justify-end">
@@ -222,7 +223,7 @@ const AssetDetails = ({ asset, onBack, onEdit, onDelete, onViewMaintenanceHistor
                     <h3 className="text-2xl font-bold text-gray-800">{asset.name} <span className={`ml-3 px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(asset.status)}`}>{asset.status}</span></h3>
                     <p className="text-gray-700 text-lg">Model: <span className="font-semibold">{asset.model}</span></p>
                     <p className="text-gray-700 text-lg">Manufacturer: <span className="font-semibold">{asset.manufacturer}</span></p>
-                    <p className="text-gray-700 text-lg">Unique ID: <span className="font-semibold">{asset.uniqueId}</span></p>
+                    <p className="text-gray-700 text-lg">Unique ID: <span className="font-semibold">{asset.uniqueid}</span></p>
 
                     {asset.type === 'Drone' && (
                         <>
@@ -273,7 +274,7 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
     const [name, setName] = useState(initialData?.name || '');
     const [model, setModel] = useState(initialData?.model || '');
     const [manufacturer, setManufacturer] = useState(initialData?.manufacturer || '');
-    const [uniqueId, setUniqueId] = useState(initialData?.uniqueId || '');
+    const [uniqueld, setUniqueld] = useState(initialData?.uniqueld || '');
     const [status, setStatus] = useState(initialData?.status || 'Available');
     const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
 
@@ -298,7 +299,7 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
             name,
             model,
             manufacturer,
-            uniqueId,
+            uniqueld, // Corrected from uniqueId
             status,
             imageUrl,
             type: assetType,
@@ -340,8 +341,8 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
                     <input type="text" id="manufacturer" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
                 </div>
                 <div>
-                    <label htmlFor="uniqueId" className="block text-sm font-medium text-gray-700">Unique ID</label>
-                    <input type="text" id="uniqueId" value={uniqueId} onChange={(e) => setUniqueId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    <label htmlFor="uniqueld" className="block text-sm font-medium text-gray-700">Unique ID</label>
+                    <input type="text" id="uniqueld" value={uniqueld} onChange={(e) => setUniqueld(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
                 </div>
                 <div>
                     <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
@@ -352,7 +353,6 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
                         <option value="Retired">Retired</option>
                     </select>
                 </div>
-
                 {assetType === 'Drone' && (
                     <>
                         <div>
@@ -409,7 +409,6 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
                         </div>
                     </>
                 )}
-
                 <div className="flex justify-end space-x-3 mt-6">
                     <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         Cancel
@@ -2367,13 +2366,14 @@ const HlsPlayer = ({ src }) => {
 };
 
 
-const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand, displayMessage, onAddDrone, onRemoveDrone }) => {
+const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand,
+    displayMessage, onAddDrone, onRemoveDrone, handleUpdateDroneStatus }) => {
     const [selectedDroneId, setSelectedDroneId] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newDroneData, setNewDroneData] = useState({ id: '', name: '', uniqueId: '', status: 'Offline' });
+    // Corrected to use 'uniqueld' to match the backend model
+    const [newDroneData, setNewDroneData] = useState({ id: '', name: '', uniqueld: '', status: 'Offline' });
 
     useEffect(() => {
-        // Sets the default drone when the list loads or changes
         if (drones.length > 0 && !drones.find(d => d.id === selectedDroneId)) {
             setSelectedDroneId(drones[0].id);
         } else if (drones.length === 0) {
@@ -2381,15 +2381,12 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         }
     }, [drones, selectedDroneId]);
 
-    // Define component variables
     const currentTelemetry = liveTelemetry[selectedDroneId] || {};
     const selectedDrone = drones.find(d => d.id === selectedDroneId);
     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
-    
-    // FIX: The stream URL now points to your Flask backend's HLS endpoint
+
     const streamUrl = selectedDroneId ? `${API_BASE_URL}/hls_streams/${selectedDroneId}/index.m3u8` : null;
 
-    // Handler for sending commands
     const handleCommand = (command, params = {}) => {
         if (!selectedDroneId) {
             displayMessage("No drone selected.", 'error');
@@ -2402,7 +2399,6 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         sendDroneCommand(selectedDroneId, command, params);
     };
 
-    // Handler to remove the selected drone
     const handleRemoveClick = () => {
         if (!selectedDroneId) {
             displayMessage("No drone selected to remove.", 'error');
@@ -2412,19 +2408,19 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
             onRemoveDrone(selectedDroneId);
         }
     };
-    
-    // Handler to save a new drone from the modal
+
     const handleSaveNewDrone = () => {
-        if (!newDroneData.id || !newDroneData.name || !newDroneData.uniqueId) {
+        // Corrected the check to use 'uniqueld'
+        if (!newDroneData.id || !newDroneData.name || !newDroneData.uniqueld) {
             displayMessage("Please fill out all fields.", 'error');
             return;
         }
         onAddDrone(newDroneData);
         setIsAddModalOpen(false);
-        setNewDroneData({ id: '', name: '', uniqueId: '', status: 'Offline' }); 
+        // Corrected the reset state to use 'uniqueld'
+        setNewDroneData({ id: '', name: '', uniqueld: '', status: 'Offline' });
     };
 
-    // FIX: New function to start the stream via backend API
     const startStream = async () => {
         if (!selectedDroneId) {
             displayMessage("No drone selected to start streaming.", 'error');
@@ -2437,8 +2433,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
             displayMessage(`Failed to start stream: ${error.message}`, 'error');
         }
     };
-    
-    // FIX: New function to stop the stream via backend API
+
     const stopStream = async () => {
         if (!selectedDroneId) {
             displayMessage("No drone selected to stop streaming.", 'error');
@@ -2452,10 +2447,21 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         }
     };
 
+    const forceOnline = () => {
+        if (selectedDroneId) {
+            handleUpdateDroneStatus(selectedDroneId, 'Online');
+        }
+    };
+
+    const forceOffline = () => {
+        if (selectedDroneId) {
+            handleUpdateDroneStatus(selectedDroneId, 'Offline');
+        }
+    };
+
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Live Operations</h2>
-
             <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-lg shadow-sm">
                 <div className="flex items-center space-x-3">
                     <label htmlFor="drone-select" className="text-gray-700 font-medium">Select Drone:</label>
@@ -2467,7 +2473,8 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     >
                         {drones.length > 0 ? (
                             drones.map(drone => (
-                                <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueId})</option>
+                                // Corrected to use 'uniqueld' here as well
+                                <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueld})</option>
                             ))
                         ) : (
                             <option value="">No drones available</option>
@@ -2486,7 +2493,6 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     </div>
                 </div>
                 <div className="flex space-x-2">
-                    {/* FIX: Added Start/Stop Stream Buttons */}
                     <button onClick={startStream} disabled={!selectedDroneId || isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md">
                         <Play className="w-5 h-5 mr-2" /> Start Stream
                     </button>
@@ -2494,21 +2500,21 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                         <Square className="w-5 h-5 mr-2" /> Stop Stream
                     </button>
 
-                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('takeoff', { altitude: 10 })}
+                        disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
                     </button>
                     <button onClick={() => handleCommand('land')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Home className="w-5 h-5 mr-2" /> Land
                     </button>
-                    <button onClick={() => handleCommand('take_photo')} disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={() => handleCommand('take_photo')}
+                        disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Camera className="w-5 h-5 mr-2" /> Take Photo
                     </button>
                 </div>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
                 <div className="lg:col-span-2 bg-black rounded-xl shadow-md flex items-center justify-center text-gray-400">
-                    {/* The ReactPlayer has been replaced with our new HlsPlayer */}
                     {isSelectedDroneOnline && streamUrl ? (
                         <HlsPlayer src={streamUrl} />
                     ) : (
@@ -2519,21 +2525,25 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     <div className="bg-white rounded-xl shadow-md p-4 flex-1">
                         <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
                         <div className="bg-gray-200 h-full rounded-md flex items-center justify-center">
-                             <p className="text-xs text-gray-500 mt-2">Lat: {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
+                            <p className="text-xs text-gray-500 mt-2">Lat:
+                                {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
                         </div>
                     </div>
                     <div className="bg-white rounded-xl shadow-md p-4">
                         <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
                         <div className="space-y-2 text-sm text-gray-700">
-                            <p className="flex justify-between"><span><Gauge size={14} className="inline mr-2" />Altitude:</span> <span className="font-semibold">{currentTelemetry.altitude?.toFixed(1) || 0} m</span></p>
-                            <p className="flex justify-between"><span><Activity size={14} className="inline mr-2" />Speed:</span> <span className="font-semibold">{currentTelemetry.speed?.toFixed(1) || 0} m/s</span></p>
-                            <p className="flex justify-between"><span><Battery size={14} className="inline mr-2" />Battery:</span> <span className="font-semibold">{currentTelemetry.battery_percent?.toFixed(0) || 0} %</span></p>
-                            <p className="flex justify-between"><span><MapPin size={14} className="inline mr-2" />Status:</span> <span className="font-semibold">{currentTelemetry.status || 'N/A'}</span></p>
+                            <p className="flex justify-between"><span><Gauge size={14} className="inline mr-2" />Altitude:</span> <span
+                                className="font-semibold">{currentTelemetry.altitude?.toFixed(1) || 0} m</span></p>
+                            <p className="flex justify-between"><span><Activity size={14} className="inline mr-2" />Speed:</span> <span
+                                className="font-semibold">{currentTelemetry.speed?.toFixed(1) || 0} m/s</span></p>
+                            <p className="flex justify-between"><span><Battery size={14} className="inline mr-2" />Battery:</span> <span
+                                className="font-semibold">{currentTelemetry.battery_percent?.toFixed(0) || 0} %</span></p>
+                            <p className="flex justify-between"><span><MapPin size={14} className="inline mr-2" />Status:</span> <span
+                                className="font-semibold">{currentTelemetry.status || 'N/A'}</span></p>
                         </div>
                     </div>
                 </div>
             </div>
-
             {isAddModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
@@ -2541,7 +2551,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                         <div className="space-y-4">
                             <input type="text" placeholder="Drone ID (e.g., d4)" value={newDroneData.id} onChange={e => setNewDroneData({ ...newDroneData, id: e.target.value })} className="w-full p-3 border rounded-md" />
                             <input type="text" placeholder="Drone Name (e.g., AeroScout)" value={newDroneData.name} onChange={e => setNewDroneData({ ...newDroneData, name: e.target.value })} className="w-full p-3 border rounded-md" />
-                            <input type="text" placeholder="Unique ID (e.g., DRN-AD-004)" value={newDroneData.uniqueId} onChange={e => setNewDroneData({ ...newDroneData, uniqueId: e.target.value })} className="w-full p-3 border rounded-md" />
+                            <input type="text" placeholder="Unique ID (e.g., DRN-AD-004)" value={newDroneData.uniqueld} onChange={e => setNewDroneData({ ...newDroneData, uniqueld: e.target.value })} className="w-full p-3 border rounded-md" />
                             <div>
                                 <label htmlFor="droneStatus" className="block text-sm font-medium text-gray-700">Initial Status</label>
                                 <select
@@ -2565,8 +2575,6 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         </div>
     );
 };
-
-
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
@@ -2660,7 +2668,7 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
                             <input type="text" placeholder="Mission Name" value={newMission.name} onChange={e => setNewMission({ ...newMission, name: e.target.value })} className="w-full p-2 border rounded" />
                             <select value={newMission.drone_id} onChange={e => setNewMission({ ...newMission, drone_id: e.target.value })} className="w-full p-2 border rounded">
                                 <option value="">Select a Drone</option>
-                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueId})</option>)}
+                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueid})</option>)}
                             </select>
                             {/* New Status Field in Form */}
                             <div>
@@ -2841,7 +2849,7 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
                     <tbody className="bg-white divide-y divide-gray-200">
                         {drones.map((drone) => (
                             <tr key={drone.id}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueId}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(drone.status)}`}>
@@ -3794,8 +3802,9 @@ const AdminPanelContent = ({
 // This component should be the last one defined before the export.
 const App = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [authToken, setAuthToken] = useState(localStorage.getItem('authToken')); // Store token
-    const [userRole, setUserRole] = useState(localStorage.getItem('userRole')); // Store user role
+    const [authToken, setAuthToken] = useState(localStorage.getItem('authToken'));
+    const [userRole, setUserRole] = useState(localStorage.getItem('userRole'));
+    // const [userProfile, setUserProfile] = useState({});
     const navigate = useNavigate();
     const handleUpdateDroneStatus = async (droneId, newStatus) => {
     try {
@@ -4192,7 +4201,19 @@ const App = () => {
                             <Routes>
                                 {/* Operations */}
                                 <Route path="/" element={<Dashboard drones={drones} missions={missions} incidents={incidents} mediaItems={mediaItems} maintenanceParts={maintenanceParts} />} />
-                                <Route path="/live-operations" element={<LiveOperations drones={drones} connectedDrones={connectedDrones} liveTelemetry={liveTelemetry} sendDroneCommand={sendDroneCommand} displayMessage={displayMessage} />} />
+                                {/* <Route path="/live-operations" element={<LiveOperations drones={drones} connectedDrones={connectedDrones} liveTelemetry={liveTelemetry} sendDroneCommand={sendDroneCommand} displayMessage={displayMessage} />} /> */}
+<Route
+    path="/live-operations"
+    element={<LiveOperations
+        drones={drones}
+        connectedDrones={connectedDrones}
+        liveTelemetry={liveTelemetry}
+        sendDroneCommand={sendDroneCommand}
+        displayMessage={displayMessage}
+        // FIX: This prop was missing, causing a crash.
+        handleUpdateDroneStatus={handleUpdateDroneStatus}
+    />}
+/>
                                 <Route path="/missions" element={<Missions missions={missions} drones={drones} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission} displayMessage={displayMessage} />} />
 
                                 {/* Assets */}
