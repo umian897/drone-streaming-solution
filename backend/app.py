@@ -17,6 +17,7 @@ import atexit
 # --- App Initialization ---
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+# socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # --- Database Configuration ---
@@ -778,4 +779,4 @@ atexit.register(shutdown_ffmpeg_processes)
 # --- Main Execution ---
 if __name__ == '__main__':
     threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
-    socketio.run(app, debug=True, port=5000)
+    socketio.run(app, debug=True, port=5000, host='0.0.0.0')
