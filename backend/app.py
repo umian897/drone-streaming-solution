@@ -13,11 +13,11 @@ import os
 import subprocess
 import shutil
 import atexit
+import sys
 
 # --- App Initialization ---
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-# socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # --- Database Configuration ---
@@ -27,7 +27,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # --- In-Memory State for Live Data (Not stored in DB) ---
-# Initialize with d1 to ensure it's available on startup
 connected_drones = ["d1"]
 live_telemetry = {
     "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859, "longitude": 58.4059, "status": "flying"},
@@ -36,18 +35,14 @@ live_telemetry = {
 }
 
 # --- Live Streaming Configuration ---
+# Live Streaming Configuration
 HLS_ROOT = os.path.join(basedir, 'hls_streams')
 if not os.path.exists(HLS_ROOT):
     os.makedirs(HLS_ROOT)
-
-# Dictionary to hold active FFmpeg subprocesses
 active_ffmpeg_processes = {}
-# Path to the FFmpeg executable
-FFMPEG_PATH = shutil.which('ffmpeg') or '/usr/bin/ffmpeg'
 
-# The base URL for the RTMP stream coming from the Nginx server.
-# This assumes Nginx is running on the same machine.
-RTMP_SERVER_URL = "rtmp://localhost/live"
+FFMPEG_PATH = shutil.which('ffmpeg') or '/usr/bin/ffmpeg'
+RTMP_SERVER_URL = "rtmp://nginx_rtmp:1935/live"
 
 # --- DATABASE MODELS ---
 class User(db.Model):
@@ -279,6 +274,7 @@ def init_db_command():
             print("Database initialized and seeded.")
         else:
             print("Database already contains data.")
+
 # --- Authentication and Authorization ---
 def get_current_user_from_request():
     """
@@ -647,55 +643,64 @@ def command_drone(drone_id):
     return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
 
 # --- Live Streaming Endpoints ---
+
+
 @app.route('/api/stream/<string:drone_id>/start', methods=['POST'])
 @login_required
 def start_stream(drone_id):
-    """
-    Starts an FFmpeg process to pull an RTMP stream from a local Nginx server
-    and transcode it into an HLS stream for the web client.
-    """
-    global active_ffmpeg_processes
-    stream_dir = os.path.join(HLS_ROOT, drone_id)
-    hls_playlist_path = os.path.join(stream_dir, 'index.m3u8')
-    rtmp_stream_url = f"{RTMP_SERVER_URL}/{drone_id}"
-    
+    # ... (existing code)
+    print(f"DEBUG: Attempting to start stream for drone {drone_id}", flush=True)
     if FFMPEG_PATH is None:
         return jsonify({"error": "FFmpeg executable not found. Please install it."}), 500
-
+    
+    # Check if a process is already running for this drone
     if drone_id in active_ffmpeg_processes and active_ffmpeg_processes[drone_id].poll() is None:
         return jsonify({"message": f"Stream for drone {drone_id} is already active."}), 200
 
     # Ensure the output directory is clean
+    stream_dir = os.path.join(HLS_ROOT, drone_id)
     if os.path.exists(stream_dir):
         shutil.rmtree(stream_dir)
     os.makedirs(stream_dir)
 
     # FFmpeg command to transcode RTMP to HLS
+    hls_playlist_path = os.path.join(stream_dir, 'index.m3u8')
+    rtmp_stream_url = f"{RTMP_SERVER_URL}/{drone_id}"
     command = [
         FFMPEG_PATH,
         '-i', rtmp_stream_url,
-        '-c:v', 'libx264',  # Re-encode video for broad HLS compatibility
-        '-c:a', 'aac',      # Re-encode audio
-        '-ac', '1',         # Mono audio
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        '-ac', '1',
         '-f', 'hls',
         '-hls_time', '2',
         '-hls_list_size', '3',
         '-hls_flags', 'delete_segments',
         hls_playlist_path
     ]
-
+    
     try:
-        # Use Popen to run FFmpeg as a separate process
+        # Use Popen to run FFmpeg as a separate process, capturing stdout and stderr
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         active_ffmpeg_processes[drone_id] = process
-        print(f"Started FFmpeg for drone {drone_id}. HLS available at /hls_streams/{drone_id}/index.m3u8")
+        print(f"Started FFmpeg for drone {drone_id}. HLS available at hls_streams/{drone_id}/index.m3u8")
+        
+        # Log FFmpeg's output in the background to diagnose errors
+        def log_ffmpeg_output():
+            while process.poll() is None:
+                line = process.stderr.readline()
+                if line:
+                    print(f"FFmpeg ({drone_id}): {line.decode().strip()}")
+        
+        threading.Thread(target=log_ffmpeg_output, daemon=True).start()
+        
         return jsonify({"message": f"Stream for drone {drone_id} started."}), 200
     except FileNotFoundError:
         return jsonify({"error": "FFmpeg not found. Please ensure it's installed and in your PATH."}), 500
     except Exception as e:
-        print(f"Error starting FFmpeg for drone {drone_id}: {e}")
+        print(f"Error starting FFmpeg for drone {drone_id}: {e}", file=sys.stderr)
         return jsonify({"error": f"Failed to start stream: {str(e)}"}), 500
-
+    
 @app.route('/api/stream/<string:drone_id>/stop', methods=['POST'])
 @login_required
 def stop_stream(drone_id):
@@ -778,5 +783,12 @@ atexit.register(shutdown_ffmpeg_processes)
 
 # --- Main Execution ---
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        # Seeding logic if needed
+    
+    # This thread will start simulating telemetry data
     threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
-    socketio.run(app, debug=True, port=5000, host='0.0.0.0')
+    
+    # This is the corrected way to run Flask-SocketIO in a Docker environment
+    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

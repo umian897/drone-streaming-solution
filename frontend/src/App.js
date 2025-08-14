@@ -2368,10 +2368,14 @@ const HlsPlayer = ({ src }) => {
 
 const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneCommand,
     displayMessage, onAddDrone, onRemoveDrone, handleUpdateDroneStatus }) => {
+    // Correct and consistent variable name: selectedDroneId
     const [selectedDroneId, setSelectedDroneId] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    // Corrected to use 'uniqueld' to match the backend model
     const [newDroneData, setNewDroneData] = useState({ id: '', name: '', uniqueld: '', status: 'Offline' });
+    const [activeStreams, setActiveStreams] = useState({}); // New state to track active streams
+
+    // Helper function to check if a stream is active
+    const isStreamActive = (droneId) => !!activeStreams[droneId];
 
     useEffect(() => {
         if (drones.length > 0 && !drones.find(d => d.id === selectedDroneId)) {
@@ -2384,8 +2388,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
     const currentTelemetry = liveTelemetry[selectedDroneId] || {};
     const selectedDrone = drones.find(d => d.id === selectedDroneId);
     const isSelectedDroneOnline = connectedDrones.includes(selectedDroneId);
-
-    const streamUrl = selectedDroneId ? `${API_BASE_URL}/hls_streams/${selectedDroneId}/index.m3u8` : null;
+    const streamUrl = selectedDroneId ? `http://localhost:8080/hls_streams/${selectedDroneId}/index.m3u8` : null;
 
     const handleCommand = (command, params = {}) => {
         if (!selectedDroneId) {
@@ -2410,25 +2413,29 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
     };
 
     const handleSaveNewDrone = () => {
-        // Corrected the check to use 'uniqueld'
         if (!newDroneData.id || !newDroneData.name || !newDroneData.uniqueld) {
             displayMessage("Please fill out all fields.", 'error');
             return;
         }
         onAddDrone(newDroneData);
         setIsAddModalOpen(false);
-        // Corrected the reset state to use 'uniqueld'
         setNewDroneData({ id: '', name: '', uniqueld: '', status: 'Offline' });
     };
 
+    // Corrected startStream function
     const startStream = async () => {
         if (!selectedDroneId) {
             displayMessage("No drone selected to start streaming.", 'error');
             return;
         }
+        if (isStreamActive(selectedDroneId)) {
+            displayMessage(`Stream for drone ${selectedDroneId} is already active.`, 'info');
+            return;
+        }
         try {
             await apiRequest(`/api/stream/${selectedDroneId}/start`, 'POST', null, localStorage.getItem('authToken'));
             displayMessage(`Attempting to start stream for drone ${selectedDroneId}.`, 'info');
+            setActiveStreams(prev => ({ ...prev, [selectedDroneId]: true }));
         } catch (error) {
             displayMessage(`Failed to start stream: ${error.message}`, 'error');
         }
@@ -2442,6 +2449,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         try {
             await apiRequest(`/api/stream/${selectedDroneId}/stop`, 'POST', null, localStorage.getItem('authToken'));
             displayMessage(`Attempting to stop stream for drone ${selectedDroneId}.`, 'info');
+            setActiveStreams(prev => ({ ...prev, [selectedDroneId]: false }));
         } catch (error) {
             displayMessage(`Failed to stop stream: ${error.message}`, 'error');
         }
@@ -2473,7 +2481,6 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     >
                         {drones.length > 0 ? (
                             drones.map(drone => (
-                                // Corrected to use 'uniqueld' here as well
                                 <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueld})</option>
                             ))
                         ) : (
@@ -2493,13 +2500,12 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                     </div>
                 </div>
                 <div className="flex space-x-2">
-                    <button onClick={startStream} disabled={!selectedDroneId || isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={startStream} disabled={!selectedDroneId || isStreamActive(selectedDroneId)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md">
                         <Play className="w-5 h-5 mr-2" /> Start Stream
                     </button>
-                    <button onClick={stopStream} disabled={!selectedDroneId || !isSelectedDroneOnline} className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 transition-colors shadow-md">
+                    <button onClick={stopStream} disabled={!selectedDroneId || !isStreamActive(selectedDroneId)} className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 transition-colors shadow-md">
                         <Square className="w-5 h-5 mr-2" /> Stop Stream
                     </button>
-
                     <button onClick={() => handleCommand('takeoff', { altitude: 10 })}
                         disabled={!isSelectedDroneOnline || !selectedDroneId} className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 disabled:bg-gray-400 transition-colors shadow-md">
                         <Rocket className="w-5 h-5 mr-2" /> Takeoff
@@ -2515,7 +2521,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
                 <div className="lg:col-span-2 bg-black rounded-xl shadow-md flex items-center justify-center text-gray-400">
-                    {isSelectedDroneOnline && streamUrl ? (
+                    {isSelectedDroneOnline && isStreamActive(selectedDroneId) && streamUrl ? (
                         <HlsPlayer src={streamUrl} />
                     ) : (
                         <span>Live feed is offline or no drone selected.</span>
@@ -2575,6 +2581,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         </div>
     );
 };
+
 const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
