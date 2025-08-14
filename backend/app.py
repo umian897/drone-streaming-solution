@@ -35,7 +35,6 @@ live_telemetry = {
 }
 
 # --- Live Streaming Configuration ---
-# Live Streaming Configuration
 HLS_ROOT = os.path.join(basedir, 'hls_streams')
 if not os.path.exists(HLS_ROOT):
     os.makedirs(HLS_ROOT)
@@ -77,12 +76,45 @@ class Drone(db.Model):
     imageUrl = db.Column(db.String(255))
     type = db.Column(db.String(50), default="Drone")
     maintenanceHistory = db.Column(JSON)
+    
+    # Corrected foreign key relationship to avoid ambiguity
+    mission_id = db.Column(db.String(36), db.ForeignKey('mission.id'), nullable=True)
+    mission = db.relationship('Mission', backref=db.backref('drones', lazy=True), foreign_keys=[mission_id])
+    
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
-            "uniqueld": self.uniqueld, "status": self.status, "lastLocation": self.lastLocation,
-            "flightHours": self.flightHours, "payloadCapacity": self.payloadCapacity,
-            "imageUrl": self.imageUrl, "type": self.type, "maintenanceHistory": self.maintenanceHistory
+            "id": self.id,
+            "name": self.name,
+            "model": self.model,
+            "manufacturer": self.manufacturer,
+            "uniqueld": self.uniqueld,
+            "status": self.status,
+            "lastLocation": self.lastLocation,
+            "flightHours": self.flightHours,
+            "payloadCapacity": self.payloadCapacity,
+            "imageUrl": self.imageUrl,
+            "type": self.type,
+            "maintenanceHistory": self.maintenanceHistory,
+            "missionId": self.mission_id,
+            "missionName": self.mission.name if self.mission else None
+        }
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "model": self.model,
+            "manufacturer": self.manufacturer,
+            "uniqueld": self.uniqueld,
+            "status": self.status,
+            "lastLocation": self.lastLocation,
+            "flightHours": self.flightHours,
+            "payloadCapacity": self.payloadCapacity,
+            "imageUrl": self.imageUrl,
+            "type": self.type,
+            "maintenanceHistory": self.maintenanceHistory,
+            "missionId": self.mission_id,
+            "missionName": self.mission.name if self.mission else None
         }
 
 class GroundStation(db.Model):
@@ -149,7 +181,11 @@ class Battery(db.Model):
 class Mission(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120), nullable=False)
+    
+    # Corrected relationship with explicit foreign_keys
     drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'))
+    drone = db.relationship('Drone', foreign_keys=[drone_id])
+
     start_time = db.Column(db.DateTime)
     end_time = db.Column(db.DateTime)
     details = db.Column(db.Text)
@@ -162,7 +198,8 @@ class Mission(db.Model):
             "endTime": self.end_time.isoformat() + 'Z' if self.end_time else None,
             "details": self.details, "status": self.status, "progress": self.progress
         }
-
+    
+        
 class Media(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String(120))
@@ -505,6 +542,7 @@ def manage_batteries(): return handle_crud(Battery)
 def manage_battery(bat_id): return handle_crud(Battery, item_id=bat_id)
 
 # Mission Endpoints
+# Mission Endpoints
 @app.route('/api/missions', methods=['GET', 'POST'])
 @login_required
 def manage_missions(): return handle_crud(Mission)
@@ -513,6 +551,24 @@ def manage_missions(): return handle_crud(Mission)
 @login_required
 def manage_mission(mission_id): return handle_crud(Mission, item_id=mission_id)
 
+@app.route('/api/missions/<string:mission_id>/assign', methods=['POST'])
+@login_required
+def assign_mission_to_drone(mission_id):
+    data = request.get_json()
+    drone_id = data.get('drone_id')
+    
+    if not drone_id:
+        return jsonify({"error": "Drone ID is required"}), 400
+
+    mission = Mission.query.get_or_404(mission_id)
+    drone = Drone.query.get_or_404(drone_id)
+
+    drone.mission_id = mission.id
+    db.session.commit()
+    
+    socketio.emit('drone_updated', drone.to_dict())
+    
+    return jsonify(drone.to_dict()), 200
 # Media Endpoints
 @app.route('/api/media', methods=['GET', 'POST'])
 @login_required
@@ -644,11 +700,9 @@ def command_drone(drone_id):
 
 # --- Live Streaming Endpoints ---
 
-
 @app.route('/api/stream/<string:drone_id>/start', methods=['POST'])
 @login_required
 def start_stream(drone_id):
-    # ... (existing code)
     print(f"DEBUG: Attempting to start stream for drone {drone_id}", flush=True)
     if FFMPEG_PATH is None:
         return jsonify({"error": "FFmpeg executable not found. Please install it."}), 500
@@ -673,26 +727,22 @@ def start_stream(drone_id):
         '-c:a', 'aac',
         '-ac', '1',
         '-f', 'hls',
-        '-hls_time', '2',
-        '-hls_list_size', '3',
+        '-hls_time', '2.5',
+        '-hls_list_size', '2',
         '-hls_flags', 'delete_segments',
         hls_playlist_path
     ]
     
     try:
-        # Use Popen to run FFmpeg as a separate process, capturing stdout and stderr
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1)
+        if process.poll() is not None:
+            error_output = process.stderr.read().decode('utf-8')
+            print(f"FFmpeg failed to start for drone {drone_id}. Error: {error_output}", file=sys.stderr)
+            return jsonify({"error": "Failed to start FFmpeg. Check backend logs for details."}), 500
+        
         active_ffmpeg_processes[drone_id] = process
         print(f"Started FFmpeg for drone {drone_id}. HLS available at hls_streams/{drone_id}/index.m3u8")
-        
-        # Log FFmpeg's output in the background to diagnose errors
-        def log_ffmpeg_output():
-            while process.poll() is None:
-                line = process.stderr.readline()
-                if line:
-                    print(f"FFmpeg ({drone_id}): {line.decode().strip()}")
-        
-        threading.Thread(target=log_ffmpeg_output, daemon=True).start()
         
         return jsonify({"message": f"Stream for drone {drone_id} started."}), 200
     except FileNotFoundError:

@@ -22,11 +22,13 @@ const API_BASE_URL = 'http://localhost:5000'; // Matches app.py.pdf
 const WEBSOCKET_URL = 'http://localhost:5000'; // Matches app.py.pdf
 
 const apiRequest = async (endpoint, method = 'GET', body = null, token = null) => {
+    // Check localStorage for the token if not provided as an argument
+    const authToken = token || localStorage.getItem('authToken');
     const options = {
         method,
         headers: {
             'Content-Type': 'application/json',
-            ...(token && { 'X-Auth-Token': token }) // Add auth token if provided
+            ...(authToken && { 'X-Auth-Token': authToken }) // Add auth token if it exists
         }
     };
     if (body) options.body = JSON.stringify(body);
@@ -39,6 +41,7 @@ const apiRequest = async (endpoint, method = 'GET', body = null, token = null) =
     if (response.status === 204) return null; // Handle No Content responses
     return response.json();
 };
+
 
 // --- HELPER FUNCTION FOR FILE ICONS (Used in Files component) ---
 const getFileTypeIcon = (fileType) => {
@@ -299,7 +302,7 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
             name,
             model,
             manufacturer,
-            uniqueld, // Corrected from uniqueId
+            uniqueld,
             status,
             imageUrl,
             type: assetType,
@@ -307,7 +310,12 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
         };
 
         if (assetType === 'Drone') {
-            Object.assign(newItem, { lastLocation, flightHours: parseFloat(flightHours), payloadCapacity: parseFloat(payloadCapacity) });
+            Object.assign(newItem, {
+                lastLocation,
+                flightHours: parseFloat(flightHours),
+                payloadCapacity: parseFloat(payloadCapacity),
+                // missionId is now handled in a different component, so it's not included here.
+            });
         } else if (assetType === 'Ground Station') {
             Object.assign(newItem, { coverageArea, powerSource });
         } else if (assetType === 'Equipment') {
@@ -421,6 +429,7 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
         </div>
     );
 };
+
 
 
 // --- 2. LIBRARY COMPONENTS (Media, Files, Checklists, Tags) ---
@@ -2323,6 +2332,26 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
         </div>
     );
 }
+// New component  Dashboard stream view
+const DashboardStreamView = ({ drone, onBack }) => {
+    if (!drone) return <div className="text-center text-gray-500">No drone selected for streaming.</div>;
+    
+    const streamUrl = `http://localhost:8080/hls_streams/${drone.id}/index.m3u8`;
+
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">Live Stream: {drone.name} ({drone.uniqueld})</h2>
+                <button onClick={onBack} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Back to Dashboard
+                </button>
+            </div>
+            <div className="bg-black rounded-xl shadow-md p-4 flex items-center justify-center text-gray-400 min-h-[500px]">
+                <HlsPlayer src={streamUrl} />
+            </div>
+        </div>
+    );
+};
 
 // --- 4. OPERATION COMPONENTS (Live Operations, Missions) ---
 
@@ -2582,7 +2611,7 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
     );
 };
 
-const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage }) => {
+const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage, onAssignDrone = () => {} }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
         name: '',
@@ -2590,9 +2619,14 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
         start_time: '',
         end_time: '',
         details: '',
-        status: 'Scheduled' // Add status to initial state
+        status: 'Scheduled'
     });
-    const [statusFilter, setStatusFilter] = useState('all'); // State for the filter
+    const [statusFilter, setStatusFilter] = useState('all');
+
+    // New state for the assign modal
+    const [showAssignModal, setShowAssignModal] = useState(false);
+    const [selectedMissionForAssignment, setSelectedMissionForAssignment] = useState(null);
+    const [selectedDroneForAssignment, setSelectedDroneForAssignment] = useState('');
 
     const onSave = async () => {
         if (!newMission.name || !newMission.drone_id || !newMission.start_time || !newMission.end_time) {
@@ -2629,6 +2663,21 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
         if (statusFilter === 'all') return true;
         return mission.status === statusFilter;
     });
+
+    const openAssignModal = (mission) => {
+        setSelectedMissionForAssignment(mission);
+        setShowAssignModal(true);
+    };
+
+    const handleConfirmAssign = () => {
+        if (selectedMissionForAssignment && selectedDroneForAssignment) {
+            // The onAssignDrone prop is now guaranteed to be a function
+            onAssignDrone(selectedMissionForAssignment.id, selectedDroneForAssignment);
+            setShowAssignModal(false);
+            setSelectedMissionForAssignment(null);
+            setSelectedDroneForAssignment('');
+        }
+    };
 
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
@@ -2675,9 +2724,8 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
                             <input type="text" placeholder="Mission Name" value={newMission.name} onChange={e => setNewMission({ ...newMission, name: e.target.value })} className="w-full p-2 border rounded" />
                             <select value={newMission.drone_id} onChange={e => setNewMission({ ...newMission, drone_id: e.target.value })} className="w-full p-2 border rounded">
                                 <option value="">Select a Drone</option>
-                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueid})</option>)}
+                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueld})</option>)}
                             </select>
-                            {/* New Status Field in Form */}
                             <div>
                                 <label className="text-sm">Mission Status</label>
                                 <select value={newMission.status} onChange={e => setNewMission({ ...newMission, status: e.target.value })} className="w-full p-2 border rounded">
@@ -2704,7 +2752,6 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Render the filtered list of missions */}
                 {filteredMissions.map(mission => (
                     <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
                         <div className="flex justify-between items-start mb-2">
@@ -2720,19 +2767,46 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
                         </div>
                         <div className="flex justify-end mt-4">
                             <button onClick={() => handleDeleteMission(mission.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full"><Trash2 className="w-5 h-5"/></button>
+                            {/* New button to assign a drone */}
+                            <button onClick={() => openAssignModal(mission)} className="px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm hover:bg-green-200">
+                                <PlusCircle className="w-4 h-4 mr-2" /> Assign Drone
+                            </button>
                         </div>
                     </div>
                 ))}
             </div>
+
+            {/* New Assign Drone Modal */}
+            {showAssignModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h3 className="text-xl font-bold mb-4">Assign Drone to {selectedMissionForAssignment?.name}</h3>
+                        <div className="space-y-4">
+                            <label className="block text-sm font-medium text-gray-700">Select an Available Drone:</label>
+                            <select
+                                value={selectedDroneForAssignment}
+                                onChange={e => setSelectedDroneForAssignment(e.target.value)}
+                                className="w-full p-2 border rounded"
+                            >
+                                <option value="">-- Choose Drone --</option>
+                                {drones.filter(d => !d.missionId).map(d => (
+                                    <option key={d.id} value={d.id}>{d.name} ({d.uniqueld})</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-4 mt-6">
+                            <button onClick={() => setShowAssignModal(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
+                            <button onClick={handleConfirmAssign} disabled={!selectedDroneForAssignment} className="px-4 py-2 bg-blue-600 text-white rounded disabled:bg-gray-400">Assign</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
-
 // --- 5. ASSET-SPECIFIC COMPONENTS (Drones, Ground Stations, Equipment, Batteries) ---
-// These components use the generic AssetList, AssetDetails, AddItemForm, and MaintenanceHistoryView
-// They receive their specific data and handlers as props.
 
-const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, handleUpdateDroneStatus, displayMessage }) => {
+const Drones = ({ drones, missions = [], handleAddDrone, handleUpdateDrone, handleDeleteDrone, handleUpdateDroneStatus, displayMessage }) => {
     // State for managing views (list, details, add, edit) and modals
     const [currentView, setCurrentView] = useState('list');
     const [selectedDrone, setSelectedDrone] = useState(null);
@@ -2805,10 +2879,10 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
 
     // Conditional rendering based on the current view
     if (currentView === 'add-drone') {
-        return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" />;
+        return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" missions={missions} />;
     }
     if (currentView === 'edit-drone') {
-        return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" initialData={selectedDrone} />;
+        return <AddItemForm title="Drone" onSave={handleSaveDrone} onCancel={handleBackToDroneList} assetType="Drone" initialData={selectedDrone} missions={missions} />;
     }
     if (currentView === 'details') {
         return (
@@ -2848,44 +2922,49 @@ const Drones = ({ drones, handleAddDrone, handleUpdateDrone, handleDeleteDrone, 
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            {['ID', 'Name', 'Status', 'Online Status', 'Flight Hours', 'Location', 'Actions'].map(h => (
+                            {['ID', 'Name', 'Mission Name', 'Status', 'Online Status', 'Flight Hours', 'Location', 'Actions'].map(h => (
                                 <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {drones.map((drone) => (
-                            <tr key={drone.id}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueid}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.name}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(drone.status)}`}>
-                                        {drone.status}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <label htmlFor={`toggle-${drone.id}`} className="flex items-center cursor-pointer">
-                                        <div className="relative">
-                                            <input 
-                                                type="checkbox" 
-                                                id={`toggle-${drone.id}`} 
-                                                className="sr-only" 
-                                                checked={drone.status === 'Online' || drone.status === 'Deployed'} 
-                                                onChange={() => handleToggleStatus(drone)} 
-                                            />
-                                            <div className="block bg-gray-600 w-14 h-8 rounded-full"></div>
-                                            <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${drone.status === 'Online' || drone.status === 'Deployed' ? 'transform translate-x-full bg-green-400' : ''}`}></div>
-                                        </div>
-                                    </label>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.flightHours}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.lastLocation}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <button onClick={() => handleViewDroneDetails(drone.id)} className="text-blue-600 hover:text-blue-900 mr-3"><Eye className="w-5 h-5" /></button>
-                                    <button onClick={() => handleDeleteDrone(drone.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5" /></button>
-                                </td>
-                            </tr>
-                        ))}
+                        {drones.map((drone) => {
+                            // Safely find the mission
+                            const mission = missions.find(m => m.id === drone.missionId);
+                            return (
+                                <tr key={drone.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueld}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.name}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{mission?.name || 'Unassigned'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(drone.status)}`}>
+                                            {drone.status}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <label htmlFor={`toggle-${drone.id}`} className="flex items-center cursor-pointer">
+                                            <div className="relative">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`toggle-${drone.id}`}
+                                                    className="sr-only"
+                                                    checked={drone.status === 'Online' || drone.status === 'Deployed'}
+                                                    onChange={() => handleToggleStatus(drone)}
+                                                />
+                                                <div className="block bg-gray-600 w-14 h-8 rounded-full"></div>
+                                                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${drone.status === 'Online' || drone.status === 'Deployed' ? 'transform translate-x-full bg-green-400' : ''}`}></div>
+                                            </div>
+                                        </label>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.flightHours}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.lastLocation}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <button onClick={() => handleViewDroneDetails(drone.id)} className="text-blue-600 hover:text-blue-900 mr-3"><Eye className="w-5 h-5" /></button>
+                                        <button onClick={() => handleDeleteDrone(drone.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5" /></button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -3335,8 +3414,8 @@ const Sidebar = ({ onLogout, userRole }) => {
 
 
 
-const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }) => {
-    const navigate = useNavigate(); // Hook for navigation
+const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts, onStreamSelect }) => {
+    const navigate = useNavigate();
 
     const totalDrones = drones.length;
     const activeMissions = missions.filter(m => m.status === 'Active').length;
@@ -3355,7 +3434,7 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
     const totalFlightHours = drones.reduce((sum, drone) => sum + (drone.flightHours || 0), 0).toFixed(1);
 
     return (
-        <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Card becomes a clickable link */}
@@ -3404,9 +3483,33 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts }
             </div>
 
             <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Flight Activity Chart (Placeholder)</h3>
-                <div className="h-64 bg-gray-100 rounded-md flex items-center justify-center text-gray-400">
-                    Graph will be displayed here
+                <h3 className="text-xl font-semibold text-gray-800 mb-4">Select a Drone to Stream</h3>
+                <div className="bg-white rounded-xl shadow-md p-6 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
+                                <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {drones.map(drone => (
+                                <tr key={drone.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.name}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.missionName || 'Unassigned'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button
+                                            onClick={() => onStreamSelect(drone)}
+                                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            <Play className="h-4 w-4 mr-2" /> Start Live Stream
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -3493,7 +3596,7 @@ const AdminPanelContent = ({
     checklists, setChecklists, handleAddChecklist, handleUpdateChecklist, handleDeleteChecklist, // Checklists
     tags, setTags, handleAddTag, handleUpdateTag, handleDeleteTag, // Tags
     incidents, handleAddIncident, handleUpdateIncident, handleDeleteIncident, // Incidents
-    maintenanceParts, setMaintenanceParts, handleAddMaintenancePart, handleUpdateMaintenancePart, handleDeleteMaintenancePart // Maintenance Parts
+    maintenanceParts,handleAssignDroneToMission, setMaintenanceParts, handleAddMaintenancePart, handleUpdateMaintenancePart, handleDeleteMaintenancePart // Maintenance Parts
 }) => {
     const [activeTab, setActiveTab] = useState('users'); // State to manage active tab
 
@@ -3744,6 +3847,7 @@ const AdminPanelContent = ({
                     handleAddMission={handleAddMission}
                     handleDeleteMission={handleDeleteMission}
                     displayMessage={displayMessage}
+                    onAssignDrone={handleAssignDroneToMission}
                 />
             )}
             {activeTab === 'media' && (
@@ -3806,28 +3910,17 @@ const AdminPanelContent = ({
 };
 
 // --- 7. MAIN APP COMPONENT (The root of your application) ---
-// This component should be the last one defined before the export.
+
 const App = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [authToken, setAuthToken] = useState(localStorage.getItem('authToken'));
     const [userRole, setUserRole] = useState(localStorage.getItem('userRole'));
-    // const [userProfile, setUserProfile] = useState({});
+    const [droneToStream, setDroneToStream] = useState(null);
     const navigate = useNavigate();
-    const handleUpdateDroneStatus = async (droneId, newStatus) => {
-    try {
-        // The API call will trigger the backend to broadcast the update
-        await authenticatedApiRequest(`/api/drones/${droneId}/status`, 'POST', { status: newStatus });
-        displayMessage(`Drone ${droneId} status set to ${newStatus}.`, 'success');
-        // No need to set state here, WebSocket will handle it
-        return true;
-    } catch (error) {
-        displayMessage(`Failed to update drone status: ${error.message}`, 'error');
-        return false;
-    }
-};
+
     // Centralized Data State
     const [drones, setDrones] = useState([]);
-    const [users, setUsers] = useState([]); 
+    const [users, setUsers] = useState([]);
     const [groundStations, setGroundStations] = useState([]);
     const [equipment, setEquipment] = useState([]);
     const [batteries, setBatteries] = useState([]);
@@ -3860,10 +3953,10 @@ const App = () => {
     }, [authToken]);
 
     // --- Data Fetching & WebSocket Logic ---
-      useEffect(() => {
-        if (!isAuthenticated || !authToken) return; // Only fetch if authenticated and token exists
+    useEffect(() => {
+        if (!isAuthenticated || !authToken) return;
 
-       const fetchAllInitialData = async () => {
+        const fetchAllInitialData = async () => {
             try {
                 const apiCalls = [
                     authenticatedApiRequest('/api/drones'),
@@ -3882,14 +3975,12 @@ const App = () => {
                     authenticatedApiRequest('/api/user/profile'),
                 ];
 
-                // If the user is an admin, add the call to fetch all users
                 if (userRole === 'admin') {
                     apiCalls.push(authenticatedApiRequest('/api/admin/users'));
                 }
 
                 const responses = await Promise.all(apiCalls);
 
-                // Assign all the existing data
                 setDrones(responses[0]);
                 setMissions(responses[1]);
                 setMediaItems(responses[2]);
@@ -3905,7 +3996,6 @@ const App = () => {
                 setTags(responses[12]);
                 setUserProfile(responses[13]);
 
-                // If the user is an admin, set the users state from the last API call
                 if (userRole === 'admin') {
                     setUsers(responses[14]);
                 }
@@ -3923,7 +4013,7 @@ const App = () => {
 
         const socket = io(WEBSOCKET_URL, {
             extraHeaders: {
-                'X-Auth-Token': authToken // Pass token with WebSocket connection
+                'X-Auth-Token': authToken
             }
         });
         socket.on('connect', () => {
@@ -3976,6 +4066,10 @@ const App = () => {
         socket.on('new_media_available', media => {
             setMediaItems(prev => [media, ...prev]);
         });
+        
+        socket.on('drone_updated', updatedDrone => {
+            setDrones(prev => prev.map(d => d.id === updatedDrone.id ? updatedDrone : d));
+        });
 
         socket.on('notification_updated', updatedNotif => {
             setNotifications(prev => prev.map(n => n.id === updatedNotif.id ? updatedNotif : n));
@@ -3985,10 +4079,8 @@ const App = () => {
             setNotifications(prev => prev.filter(n => n.id !== deletedNotif.id));
         });
 
-        // This is the new listener you added for real-time status updates
         socket.on('drone_status_updated', (updatedDrone) => {
             setDrones(prev => prev.map(d => d.id === updatedDrone.id ? updatedDrone : d));
-            // Also update the connected drones list based on the new status
             if (updatedDrone.status === 'Online' || updatedDrone.status === 'Deployed') {
                 setConnectedDrones(prev => [...new Set([...prev, updatedDrone.id])]);
             } else {
@@ -3999,29 +4091,21 @@ const App = () => {
         return () => socket.disconnect();
     }, [isAuthenticated, authToken, displayMessage, authenticatedApiRequest]);
 
-
-    // Check for existing token and attempt to authenticate on mount
     useEffect(() => {
         if (authToken && userRole) {
-            // In a real app, you'd send the token to the backend to validate it
-            // For this mock, presence of token is enough to be "authenticated"
-            // You might want to add a /api/verify_token endpoint in your backend
-            // and call it here.
             setIsAuthenticated(true);
-            // navigate('/'); // No need to navigate here, the route handles it.
         } else {
             setIsAuthenticated(false);
             navigate('/auth');
         }
-    }, []); // Run only once on mount
+    }, [authToken, userRole, navigate]);
 
 
-    // --- API HANDLER FUNCTIONS (Centralized in App.js) ---
-    // These functions will be passed down as props to the respective components.
+    // --- API HANDLER FUNCTIONS ---
 
     const handleLoginSuccess = (token, user) => {
         localStorage.setItem('authToken', token);
-        localStorage.setItem('userRole', user.role); // Store user role
+        localStorage.setItem('userRole', user.role);
         setAuthToken(token);
         setUserRole(user.role);
         setIsAuthenticated(true);
@@ -4191,13 +4275,65 @@ const App = () => {
         }
     };
 
+    const handleUpdateDroneStatus = async (droneId, newStatus) => {
+        try {
+            // The API call will trigger the backend to broadcast the update
+            await authenticatedApiRequest(`/api/drones/${droneId}/status`, 'POST', { status: newStatus });
+            displayMessage(`Drone ${droneId} status set to ${newStatus}.`, 'success');
+            return true;
+        } catch (error) {
+            displayMessage(`Failed to update drone status: ${error.message}`, 'error');
+            return false;
+        }
+    };
+    
+    const handleAssignMissionToDrone = async (missionId, droneId) => {
+        try {
+            const updatedDrone = await authenticatedApiRequest(
+                `/api/missions/${missionId}/assign`,
+                'POST',
+                { drone_id: droneId }
+            );
+            // Update the drones state
+            setDrones(prev => prev.map(d => d.id === droneId ? updatedDrone : d));
+            displayMessage('Drone successfully assigned to mission.', 'success');
+        } catch (error) {
+            displayMessage(`Failed to assign drone to mission: ${error.message}`, 'error');
+        }
+    };
+
+
+    // New handler to select a drone for streaming
+    const handleStreamSelect = async (drone) => {
+        try {
+            await authenticatedApiRequest(`/api/stream/${drone.id}/start`, 'POST', null, localStorage.getItem('authToken'));
+            setDroneToStream(drone);
+            displayMessage(`Attempting to start stream for drone ${drone.name}.`, 'info');
+        } catch (error) {
+            displayMessage(`Failed to start stream: ${error.message}`, 'error');
+        }
+    };
+
+    // New handler to go back to the dashboard
+    const handleBackToDashboard = async () => {
+        if (droneToStream) {
+            try {
+                await authenticatedApiRequest(`/api/stream/${droneToStream.id}/stop`, 'POST', null, localStorage.getItem('authToken'));
+                displayMessage(`Stream for drone ${droneToStream.name} stopped.`, 'info');
+            } catch (error) {
+                displayMessage(`Failed to stop stream: ${error.message}`, 'error');
+            }
+        }
+        setDroneToStream(null);
+    };
+
 
     // --- RENDER ---
     return (
         <div className="flex min-h-screen bg-gray-100">
             {isAuthenticated ? (
                 <>
-                    <Sidebar onLogout={handleLogout} userRole={userRole} /> {/* Pass userRole to Sidebar */}
+                    <Sidebar onLogout={handleLogout} userRole={userRole} />
                     <div className="flex-1 flex flex-col">
                         <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
                             <h1 className="text-xl font-semibold">Drone Operations Dashboard</h1>
@@ -4207,153 +4343,111 @@ const App = () => {
                         <main className="flex-1 p-6 overflow-y-auto">
                             <Routes>
                                 {/* Operations */}
-                                <Route path="/" element={<Dashboard drones={drones} missions={missions} incidents={incidents} mediaItems={mediaItems} maintenanceParts={maintenanceParts} />} />
-                                {/* <Route path="/live-operations" element={<LiveOperations drones={drones} connectedDrones={connectedDrones} liveTelemetry={liveTelemetry} sendDroneCommand={sendDroneCommand} displayMessage={displayMessage} />} /> */}
-<Route
-    path="/live-operations"
-    element={<LiveOperations
-        drones={drones}
-        connectedDrones={connectedDrones}
-        liveTelemetry={liveTelemetry}
-        sendDroneCommand={sendDroneCommand}
-        displayMessage={displayMessage}
-        // FIX: This prop was missing, causing a crash.
-        handleUpdateDroneStatus={handleUpdateDroneStatus}
-    />}
-/>
-                                <Route path="/missions" element={<Missions missions={missions} drones={drones} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission} displayMessage={displayMessage} />} />
+                                <Route path="/" element={
+                                    droneToStream ? (
+                                        <DashboardStreamView drone={droneToStream} onBack={handleBackToDashboard} />
+                                    ) : (
+                                        <Dashboard
+                                            drones={drones}
+                                            missions={missions}
+                                            incidents={incidents}
+                                            mediaItems={mediaItems}
+                                            maintenanceParts={maintenanceParts}
+                                            onStreamSelect={handleStreamSelect}
+                                        />
+                                    )
+                                } />
+                                {/* Live Operations Route */}
+                                <Route path="/live-operations" element={<LiveOperations
+                                    drones={drones} connectedDrones={connectedDrones} liveTelemetry={liveTelemetry} sendDroneCommand={sendDroneCommand}
+                                    displayMessage={displayMessage} handleUpdateDroneStatus={handleUpdateDroneStatus}
+                                />} />
+                                
+                                {/* Missions Route - Correctly passing the new prop */}
+                                <Route path="/missions" element={<Missions
+                                    missions={missions} drones={drones} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
+                                    onAssignDrone={handleAssignMissionToDrone}
+                                    displayMessage={displayMessage}
+                                />} />
 
                                 {/* Assets */}
-                                <Route 
-                                    path="/assets/drones" 
-                                    element={<Drones
-                                        drones={drones}
-                                        handleAddDrone={handleAddDrone}
-                                        handleUpdateDrone={handleUpdateDrone}
-                                        handleDeleteDrone={handleDeleteDrone}
-                                        handleUpdateDroneStatus={handleUpdateDroneStatus} // This is the new prop you added
-                                        displayMessage={displayMessage}
-                                    />} 
-                                />
-                                <Route path="/assets/ground-stations" element={<GroundStations
-                                    groundStations={groundStations}
-                                    handleAddGS={handleAddGroundStation}
-                                    handleUpdateGS={handleUpdateGroundStation}
-                                    handleDeleteGS={handleDeleteGroundStation}
+                                <Route path="/assets/drones" element={<Drones
+                                    drones={drones} missions={missions} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone}
+                                    handleDeleteDrone={handleDeleteDrone} handleUpdateDroneStatus={handleUpdateDroneStatus}
                                     displayMessage={displayMessage}
+                                />} />
+                                <Route path="/assets/ground-stations" element={<GroundStations
+                                    groundStations={groundStations} handleAddGS={handleAddGroundStation} handleUpdateGS={handleUpdateGroundStation}
+                                    handleDeleteGS={handleDeleteGroundStation} displayMessage={displayMessage}
                                 />} />
                                 <Route path="/assets/equipment" element={<Equipment
-                                    equipment={equipment}
-                                    handleAddEquipment={handleAddEquipment}
-                                    handleUpdateEquipment={handleUpdateEquipment}
-                                    handleDeleteEquipment={handleDeleteEquipment}
-                                    displayMessage={displayMessage}
+                                    equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment}
+                                    handleDeleteEquipment={handleDeleteEquipment} displayMessage={displayMessage}
                                 />} />
                                 <Route path="/assets/batteries" element={<Batteries
-                                    batteries={batteries}
-                                    handleAddBattery={handleAddBattery}
-                                    handleUpdateBattery={handleUpdateBattery}
-                                    handleDeleteBattery={handleDeleteBattery}
-                                    displayMessage={displayMessage}
+                                    batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery}
+                                    handleDeleteBattery={handleDeleteBattery} displayMessage={displayMessage}
                                 />} />
 
                                 {/* Library */}
                                 <Route path="/library/media" element={<Media
-                                    mediaItems={mediaItems}
-                                    setMediaItems={setMediaItems}
-                                    handleAddMedia={handleAddMedia}
-                                    handleUpdateMedia={handleUpdateMedia}
-                                    handleDeleteMedia={handleDeleteMedia}
-                                    displayMessage={displayMessage}
+                                    mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia}
+                                    handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia} displayMessage={displayMessage}
                                 />} />
                                 <Route path="/library/files" element={<Files
-                                    files={files}
-                                    setFiles={setFiles}
-                                    handleAddFile={handleAddFile}
-                                    handleUpdateFile={handleUpdateFile}
-                                    handleDeleteFile={handleDeleteFile}
-                                    displayMessage={displayMessage}
+                                    files={files} setFiles={setFiles} handleAddFile={handleAddFile}
+                                    handleUpdateFile={handleUpdateFile} handleDeleteFile={handleDeleteFile} displayMessage={displayMessage}
                                 />} />
                                 <Route path="/library/checklists" element={<Checklists
-                                    checklists={checklists}
-                                    setChecklists={setChecklists}
-                                    handleAddChecklist={handleAddChecklist}
-                                    handleUpdateChecklist={handleUpdateChecklist}
-                                    handleDeleteChecklist={handleDeleteChecklist}
-                                    displayMessage={displayMessage}
+                                    checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist}
+                                    handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist} displayMessage={displayMessage}
                                 />} />
                                 <Route path="/library/tags" element={<Tags
-                                    tags={tags}
-                                    setTags={setTags}
-                                    handleAddTag={handleAddTag}
-                                    handleUpdateTag={handleUpdateTag}
-                                    handleDeleteTag={handleDeleteTag}
-                                    displayMessage={displayMessage}
+                                    tags={tags} setTags={setTags} handleAddTag={handleAddTag}
+                                    handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag} displayMessage={displayMessage}
                                 />} />
 
                                 {/* Manage */}
-                                <Route path="/manage/incidents" element={
-                                    <IncidentSection
-                                        incidents={incidents}
-                                        handleAddIncident={handleAddIncident}
-                                        handleUpdateIncident={handleUpdateIncident}
-                                        handleDeleteIncident={handleDeleteIncident}
-                                        displayMessage={displayMessage}
-                                    />
-                                } />
-                                <Route path="/manage/maintenance" element={<MaintenanceSection
-                                    maintenanceParts={maintenanceParts}
-                                    setMaintenanceParts={setMaintenanceParts}
+                                <Route path="/manage/incidents" element={<IncidentSection
+                                    incidents={incidents} handleAddIncident={handleAddIncident}
+                                    handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
                                     displayMessage={displayMessage}
                                 />} />
+                                <Route path="/manage/maintenance" element={<MaintenanceSection
+                                    maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} displayMessage={displayMessage}
+                                />} />
                                 <Route path="/manage/profile-settings" element={<ProfileSettings
-                                    user={userProfile}
-                                    setUser={setUserProfile}
-                                    displayMessage={displayMessage}
-                                    handleUpdateUserProfile={handleUpdateUserProfile}
-                                    handleChangePassword={handleChangePassword}
+                                    user={userProfile} setUser={setUserProfile} displayMessage={displayMessage}
+                                    handleUpdateUserProfile={handleUpdateUserProfile} handleChangePassword={handleChangePassword}
                                     handleUpdateProfilePicture={handleUpdateProfilePicture}
                                 />} />
 
                                 <Route path="/notifications" element={<NotificationsPage
-                                    notifications={notifications}
-                                    setNotifications={setNotifications}
-                                    displayMessage={displayMessage}
+                                    notifications={notifications} setNotifications={setNotifications} displayMessage={displayMessage}
                                 />} />
 
-                              {userRole === 'admin' && (
-                                <Route
-                                    path="/admin-panel"
-                                    element={
-                                        <AdminPanelContent
-                                            displayMessage={displayMessage}
-                                            authToken={authToken}
-                                            // Pass down all necessary data and their CRUD handlers
-                                            users={users} // Pass the 'users' state directly from App.js
-                                            handleAddUser={(userData) => handleAddItem('/api/admin/users', userData, setUsers, 'User')} // Use setUsers directly
-                                            handleUpdateUser={(id, data) => handleUpdateItem('/api/admin/users', id, data, setUsers, 'User')} // Use setUsers directly
-                                            handleDeleteUser={(id) => handleDeleteItem('/api/admin/users', id, setUsers, 'user')} // Use setUsers directly
-
-                                            drones={drones} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone}
-                                            groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
-                                            equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
-                                            batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
-                                            missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
-                                            mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
-                                            files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
-                                            checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
-                                            tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
-                                            incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
-                                            maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
-                                        />
-                                    }
+                                {userRole === 'admin' && (
+                                    <Route path="/admin-panel" element={<AdminPanelContent
+                                        displayMessage={displayMessage} authToken={authToken}
+                                        users={users} handleAddUser={(userData) => handleAddItem('/api/admin/users', userData, setUsers, 'User')} handleUpdateUser={(id, data) => handleUpdateItem('/api/admin/users', id, data, setUsers, 'User')} handleDeleteUser={(id) => handleDeleteItem('/api/admin/users', id, setUsers, 'user')}
+                                        drones={drones} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone}
+                                        groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
+                                        equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
+                                        batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
+                                        missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
+                                        mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
+                                        files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
+                                        checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
+                                        tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
+                                        incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
+                                        maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
+                                    />}
                                 />
-                            )}
+                                )}
 
                                 <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} />} />
                             </Routes>
                         </main>
-
                     </div>
                 </>
             ) : (
@@ -4362,5 +4456,4 @@ const App = () => {
         </div>
     );
 };
-
 export default App;
