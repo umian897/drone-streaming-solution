@@ -265,7 +265,7 @@ class Incident(db.Model):
     message = db.Column(db.Text)
     timestamp = db.Column(db.DateTime)
     resolved = db.Column(db.Boolean, default=False)
-    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True) # New field
+    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True)
     def to_dict(self):
         return {
             "id": self.id, "type": self.type, "message": self.message, "resolved":
@@ -280,7 +280,7 @@ class MaintenancePart(db.Model):
     status = db.Column(db.String(50))
     lastMaintenance = db.Column(db.Date)
     nextMaintenance = db.Column(db.Date)
-    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True) # New field
+    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True)
     def to_dict(self):
         return {
             "id": self.id, "name": self.name, "status": self.status,
@@ -312,7 +312,6 @@ def init_db_command():
         db.create_all()
         if not User.query.filter_by(username='admin').first():
             print("Seeding database with initial data...")
-            # Create a hashed password for the initial admin user
             admin_password_hash = generate_password_hash("adminpassword")
             admin_user = User(
                 username='admin',
@@ -335,13 +334,10 @@ def get_current_user_from_request():
     auth_token = request.headers.get('X-Auth-Token')
     if not auth_token:
         return None
-    # For development, we use mock tokens to simulate different user roles.
     if auth_token == "mock-admin-token":
-        # Find the admin user (or create a temporary one for mock purposes)
         admin_user = User.query.filter_by(role='admin').first()
         return admin_user
     elif auth_token.startswith("mock-token-"):
-        # This is a simplified check for a 'standard user'
         user = User.query.filter_by(role='user').first()
         return user
     return None
@@ -374,19 +370,25 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# List of allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def parse_datetime_str(iso_string):
-    if not iso_string: return None
-    return datetime.datetime.fromisoformat(iso_string.replace('Z', ""))
+    if not iso_string:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(iso_string)
+    except ValueError:
+        return None
 
 def parse_date_str(iso_string):
     if not iso_string: return None
-    return datetime.date.fromisoformat(iso_string.split('T')[0])
+    try:
+        return datetime.date.fromisoformat(iso_string.split('T')[0])
+    except (ValueError, IndexError):
+        return None
 
 # --- Generic CRUD Functions ---
 def handle_crud(model, item_id=None):
@@ -399,56 +401,76 @@ def handle_crud(model, item_id=None):
             return jsonify([item.to_dict() for item in items])
     if request.method == 'POST' or request.method == 'PUT':
         data = request.get_json()
-        if request.method == 'POST':
-            if model == Drone:
-                data['status'] = data.get('status', 'Offline')
-            if model == Mission:
-                data['start_time'] = parse_datetime_str(data.get('startTime'))
-                data['end_time'] = parse_datetime_str(data.get('endTime'))
-                if 'droneIds' in data:
-                    data['drone_ids'] = data.pop('droneIds')
-            elif model == Media:
-                data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-                data['date'] = datetime.date.today()
-            elif model == File:
-                data['uploadDate'] = datetime.date.today()
-            elif model == Incident:
-                data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-                data['drone_id'] = data.pop('droneId', None) # New field
-            elif model == MaintenancePart:
-                data['lastMaintenance'] = parse_date_str(data.get('lastMaintenance'))
-                data['nextMaintenance'] = parse_date_str(data.get('nextMaintenance'))
-                data['drone_id'] = data.pop('droneId', None) # New field
-            
-            # Special handling for password hashing on user creation
-            if model == User and 'password' in data:
-                data['password'] = generate_password_hash(data['password'])
+        processed_data = data.copy()
 
-            new_item = model(**data)
+        if model == Mission:
+            start_time_str = processed_data.get('startTime')
+            end_time_str = processed_data.get('endTime')
+            processed_data['start_time'] = parse_datetime_str(start_time_str)
+            processed_data['end_time'] = parse_datetime_str(end_time_str)
+            if 'droneIds' in processed_data:
+                processed_data['drone_ids'] = processed_data.pop('droneIds')
+        elif model == Incident:
+            if 'droneId' in processed_data:
+                processed_data['drone_id'] = processed_data.pop('droneId')
+            processed_data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+        elif model == MaintenancePart:
+            if 'droneId' in processed_data:
+                processed_data['drone_id'] = processed_data.pop('droneId')
+            if 'lastMaintenance' in processed_data:
+                processed_data['lastMaintenance'] = parse_date_str(processed_data.pop('lastMaintenance'))
+            if 'nextMaintenance' in processed_data:
+                processed_data['nextMaintenance'] = parse_date_str(processed_data.pop('nextMaintenance'))
+        
+        if model == Media:
+            processed_data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+            processed_data['date'] = datetime.date.today()
+        elif model == File:
+            processed_data['uploadDate'] = datetime.date.today()
+        
+        if model == User and 'password' in processed_data:
+            processed_data['password'] = generate_password_hash(processed_data['password'])
+
+        data_for_db = {k: v for k, v in processed_data.items() if v is not None}
+        
+        if request.method == 'POST':
+            if model == Mission:
+                if 'name' not in data_for_db or 'start_time' not in data_for_db or 'end_time' not in data_for_db:
+                    return jsonify({"error": "Missing required mission fields."}), 400
+                new_item = model(
+                    name=data_for_db['name'],
+                    start_time=data_for_db['start_time'],
+                    end_time=data_for_db['end_time'],
+                    details=data_for_db.get('details'),
+                    status=data_for_db.get('status'),
+                    progress=data_for_db.get('progress', 0),
+                    drone_ids=data_for_db.get('drone_ids')
+                )
+            elif model == MaintenancePart:
+                new_item = model(
+                    name=data_for_db['name'],
+                    status=data_for_db.get('status', 'Available'),
+                    lastMaintenance=data_for_db.get('lastMaintenance'),
+                    nextMaintenance=data_for_db.get('nextMaintenance'),
+                    drone_id=data_for_db.get('drone_id')
+                )
+            else:
+                new_item = model(**data_for_db)
+
             db.session.add(new_item)
             db.session.commit()
             if model == Media:
                 socketio.emit('new_media_available', new_item.to_dict())
             return jsonify(new_item.to_dict()), 201
+            
         elif request.method == 'PUT':
             item = model.query.get_or_404(item_id)
-            if model == Mission:
-                if data.get('startTime'): data['start_time'] = parse_datetime_str(data.pop('startTime'))
-                if data.get('endTime'): data['end_time'] = parse_datetime_str(data.pop('endTime'))
-                if 'droneIds' in data:
-                    data['drone_ids'] = data.pop('droneIds')
-            elif model == MaintenancePart:
-                if data.get('lastMaintenance'): data['lastMaintenance'] = parse_date_str(data['lastMaintenance'])
-                if data.get('nextMaintenance'): data['nextMaintenance'] = parse_date_str(data['nextMaintenance'])
-            elif model == User and 'password' in data:
-                # Hash the new password if it exists
-                data['password'] = generate_password_hash(data['password'])
-            
-            for key, value in data.items():
+            for key, value in data_for_db.items():
                 if hasattr(item, key):
                     setattr(item, key, value)
             db.session.commit()
             return jsonify(item.to_dict())
+    
     elif request.method == 'DELETE':
         item = model.query.get_or_404(item_id)
         db.session.delete(item)
@@ -762,7 +784,7 @@ def start_stream(drone_id):
         return jsonify({"error": "FFmpeg executable not found. Please install it."}), 500
     if drone_id in active_ffmpeg_processes and active_ffmpeg_processes[drone_id].poll() is None:
         return jsonify({"message": f"Stream for drone {drone_id} is already active."}), 200
-    stream_dir = os.path.join(HLS_ROOT, drone_id)
+    stream_dir = os.path.join(app.root_path, 'hls_streams', drone_id)
     if os.path.exists(stream_dir):
         shutil.rmtree(stream_dir)
     os.makedirs(stream_dir)
@@ -775,8 +797,8 @@ def start_stream(drone_id):
         '-c:a', 'aac',
         '-ac', '1',
         '-f', 'hls',
-        '-hls_time', '2.5',
-        '-hls_list_size', '2',
+        '-hls_time', '2',
+        '-hls_list_size', '5',
         '-hls_flags', 'delete_segments',
         hls_playlist_path
     ]
@@ -812,7 +834,7 @@ def stop_stream(drone_id):
             except subprocess.TimeoutExpired:
                 process.kill()
             del active_ffmpeg_processes[drone_id]
-        stream_dir = os.path.join(HLS_ROOT, drone_id)
+        stream_dir = os.path.join(app.root_path, 'hls_streams', drone_id)
         if os.path.exists(stream_dir):
             shutil.rmtree(stream_dir)
         print(f"Stopped FFmpeg for drone {drone_id} and cleaned up HLS files.")
@@ -825,7 +847,7 @@ def serve_hls_stream(filename):
     """
     Serves the HLS manifest and video segments.
     """
-    return send_from_directory(HLS_ROOT, filename)
+    return send_from_directory(os.path.join(app.root_path, 'hls_streams'), filename)
 
 # --- Background Telemetry Simulation ---
 def simulate_drone_telemetry():
@@ -870,7 +892,7 @@ def shutdown_ffmpeg_processes():
             except subprocess.TimeoutExpired:
                 print(f"Force killing FFmpeg process for drone {drone_id} due to timeout...")
                 process.kill()
-        stream_dir = os.path.join(HLS_ROOT, drone_id)
+        stream_dir = os.path.join(app.root_path, 'hls_streams', drone_id)
         if os.path.exists(stream_dir):
             shutil.rmtree(stream_dir)
     print("All FFmpeg processes shut down.")

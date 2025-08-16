@@ -718,7 +718,7 @@ const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelet
 };
 
 
-const Media = ({ mediaItems, setMediaItems, drones, missions, handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
+const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
     const [currentView, setCurrentView] = useState('folders');
     const [selectedMedia, setSelectedMedia] = useState(null);
     const [selectedDroneMedia, setSelectedDroneMedia] = useState([]);
@@ -816,7 +816,7 @@ const Media = ({ mediaItems, setMediaItems, drones, missions, handleAddMedia, ha
         }
         setSelectedMedia(null);
     };
-    
+
     // Filtering logic for the drone-specific media list
     const filteredDroneMedia = (selectedDroneMedia || []).filter(item => {
         const matchesType = filterType === 'all' || item.type === filterType;
@@ -2226,14 +2226,13 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
     );
 };
 
-function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMessage, drones }) {
+function MaintenanceSection({ maintenanceParts = [], setMaintenanceParts, displayMessage, drones = [] }) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newPart, setNewPart] = useState({
         name: '', status: 'Available', lastMaintenance: '', nextMaintenance: '', droneId: ''
     });
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingPart, setEditingPart] = useState(null);
-
 
     const handleAddPart = async () => {
         if (newPart.name.trim() === '') {
@@ -2484,8 +2483,7 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                     </div>
                 </div>
             )}
-
-
+            
             {maintenanceParts.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
                     <p className="text-gray-500 text-lg">No maintenance parts found. Add a new part to get started!</p>
@@ -2846,8 +2844,108 @@ const MissionDetailView = ({ mission, onBack, drones }) => {
         </div>
     );
 };
+// Mission Form for Add/Edit
+const MissionForm = ({ title, onSave, onCancel, initialData = null, drones }) => {
+    const [name, setName] = useState(initialData?.name || '');
+    const [status, setStatus] = useState(initialData?.status || 'Scheduled');
+    const [details, setDetails] = useState(initialData?.details || '');
+    const [startTime, setStartTime] = useState(initialData?.startTime ? initialData.startTime.split('T')[0] : '');
+    const [endTime, setEndTime] = useState(initialData?.endTime ? initialData.endTime.split('T')[0] : '');
+    const [selectedDrones, setSelectedDrones] = useState(initialData?.droneIds || []);
+
+    const handleDroneSelection = (e) => {
+        const { value, checked } = e.target;
+        if (checked) {
+            setSelectedDrones([...selectedDrones, value]);
+        } else {
+            setSelectedDrones(selectedDrones.filter(id => id !== value));
+        }
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name || !startTime || !endTime) {
+            alert('Please fill out all required fields.');
+            return;
+        }
+
+        const missionToSave = {
+            id: initialData?.id || `new-mission-${Date.now()}`,
+            name,
+            status,
+            details,
+            startTime,
+            endTime,
+            droneIds: selectedDrones
+        };
+        onSave(missionToSave);
+    };
+
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-md">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">{title}</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label htmlFor="missionName" className="block text-sm font-medium text-gray-700">Mission Name</label>
+                    <input type="text" id="missionName" value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                </div>
+                <div>
+                    <label htmlFor="missionStatus" className="block text-sm font-medium text-gray-700">Status</label>
+                    <select id="missionStatus" value={status} onChange={e => setStatus(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Active">Active</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+                <div>
+                    <label htmlFor="missionDetails" className="block text-sm font-medium text-gray-700">Details</label>
+                    <textarea id="missionDetails" value={details} onChange={e => setDetails(e.target.value)} rows="3" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="missionStartTime" className="block text-sm font-medium text-gray-700">Start Time</label>
+                        <input type="datetime-local" id="missionStartTime" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    </div>
+                    <div>
+                        <label htmlFor="missionEndTime" className="block text-sm font-medium text-gray-700">End Time</label>
+                        <input type="datetime-local" id="missionEndTime" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Assign Drones</label>
+                    <div className="mt-1 space-y-2">
+                        {drones.map(drone => (
+                            <div key={drone.id} className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id={`drone-${drone.id}`}
+                                    value={drone.id}
+                                    checked={selectedDrones.includes(drone.id)}
+                                    onChange={handleDroneSelection}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <label htmlFor={`drone-${drone.id}`} className="ml-2 block text-sm text-gray-900">
+                                    {drone.name} ({drone.uniqueld})
+                                </label>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                    <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">
+                        {initialData ? 'Save Changes' : 'Create Mission'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+};
+
 const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission, handleDeleteMission, displayMessage }) => {
-const [showAddModal, setShowAddModal] = useState(false);
+    const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
         name: '',
         drone_id: '',
@@ -2863,55 +2961,56 @@ const [showAddModal, setShowAddModal] = useState(false);
     const [selectedMissionForAssignment, setSelectedMissionForAssignment] = useState(null);
     const [selectedDroneForAssignment, setSelectedDroneForAssignment] = useState('');
     const [currentView, setCurrentView] = useState('list');
-const [selectedMission, setSelectedMission] = useState(null);
-const [confirmingDeleteMission, setConfirmingDeleteMission] = useState(null);
+    const [selectedMission, setSelectedMission] = useState(null);
+    const [confirmingDeleteMission, setConfirmingDeleteMission] = useState(null);
 
-const handleCreateMission = () => setCurrentView('create');
+    const handleCreateMission = () => setCurrentView('create');
 
-const handleEditMission = (id) => {
-    setSelectedMission(missions.find(m => m.id === id));
-    setCurrentView('edit');
-};
+    const handleEditMission = (id) => {
+        setSelectedMission(missions.find(m => m.id === id));
+        setCurrentView('edit');
+    };
 
-const handleViewMissionDetails = (id) => {
-    setSelectedMission(missions.find(m => m.id === id));
-    setCurrentView('details');
-};
+    const handleViewMissionDetails = (id) => {
+        setSelectedMission(missions.find(m => m.id === id));
+        setCurrentView('details');
+    };
 
-const handleSaveMission = async (updatedMissionData) => {
-    let success = false;
-    if (currentView === 'create') {
-        success = await handleAddMission(updatedMissionData);
-    } else if (currentView === 'edit') {
-        success = await handleUpdateMission(updatedMissionData.id, updatedMissionData);
-    }
-    if (success) {
+    const handleSaveMission = async (updatedMissionData) => {
+        let success = false;
+        if (currentView === 'create') {
+            success = await handleAddMission(updatedMissionData);
+        } else if (currentView === 'edit') {
+            success = await handleUpdateMission(updatedMissionData.id, updatedMissionData);
+        }
+        if (success) {
+            setCurrentView('list');
+            setSelectedMission(null);
+        }
+    };
+
+    const handleBackToMissionList = () => {
         setCurrentView('list');
         setSelectedMission(null);
-    }
-};
+    };
 
-const handleBackToMissionList = () => {
-    setCurrentView('list');
-    setSelectedMission(null);
-};
+    const handleDeleteMissionConfirm = (id) => {
+        setConfirmingDeleteMission(id);
+    };
 
-const handleDeleteMissionConfirm = (id) => {
-    setConfirmingDeleteMission(id);
-};
+    const handleConfirmDeleteMission = async () => {
+        const success = await handleDeleteMission(confirmingDeleteMission);
+        if (success) {
+            setConfirmingDeleteMission(null);
+            setSelectedMission(null);
+            setCurrentView('list');
+        }
+    };
 
-const handleConfirmDeleteMission = async () => {
-    const success = await handleDeleteMission(confirmingDeleteMission);
-    if (success) {
+    const handleCancelDeleteMission = () => {
         setConfirmingDeleteMission(null);
-        setSelectedMission(null);
-        setCurrentView('list');
-    }
-};
+    };
 
-const handleCancelDeleteMission = () => {
-    setConfirmingDeleteMission(null);
-};
     const onSave = async () => {
         if (!newMission.name || !newMission.drone_id || !newMission.start_time || !newMission.end_time) {
             displayMessage("Please fill all required mission fields.", 'error');
@@ -2964,130 +3063,130 @@ const handleCancelDeleteMission = () => {
     };
 
     return (
-  <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
-    {currentView === 'list' && (
-      <>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
-          <button onClick={handleCreateMission} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-            <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
-          </button>
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+            {currentView === 'list' && (
+                <>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
+                        <button onClick={handleCreateMission} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                            <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
+                        </button>
+                    </div>
+                    {/* Status Filter Buttons */}
+                    <div className="flex space-x-2 mb-6 bg-white p-2 rounded-lg shadow-sm w-min">
+                        <button
+                            onClick={() => setStatusFilter('all')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                        >
+                            All
+                        </button>
+                        <button
+                            onClick={() => setStatusFilter('Active')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Active' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                        >
+                            Active
+                        </button>
+                        <button
+                            onClick={() => setStatusFilter('Scheduled')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Scheduled' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                        >
+                            Scheduled
+                        </button>
+                        <button
+                            onClick={() => setStatusFilter('Completed')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Completed' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                        >
+                            Completed
+                        </button>
+                    </div>
+
+                    {/* ... The grid of mission cards will go here (from step 1) ... */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredMissions.length === 0 ? (
+                            <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8 col-span-full">
+                                <p className="text-gray-500 text-lg">No missions found matching your criteria.</p>
+                            </div>
+                        ) : (
+                            filteredMissions.map(mission => (
+                                <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <Link to={`/missions/${mission.id}`} className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors">
+                                            {mission.name}
+                                        </Link>
+                                        <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>
+                                            {mission.status}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
+                                    <div className="text-sm space-y-2">
+                                        <p>
+                                            <strong>Drones:</strong>
+                                            {mission.droneIds && mission.droneIds.length > 0
+                                                ? mission.droneIds.map(droneId => (
+                                                    <span key={droneId} className="ml-1">
+                                                        {drones.find(d => d.id === droneId)?.name || `ID: ${droneId}`}
+                                                    </span>
+                                                ))
+                                                : 'Unassigned'}
+                                        </p>
+                                        <p>
+                                            <strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}
+                                        </p>
+                                        <p>
+                                            <strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}
+                                        </p>
+                                        <p>
+                                            <strong>Progress:</strong> {mission.progress || 0}%
+                                        </p>
+                                    </div>
+                                    <div className="flex justify-end space-x-2 mt-4">
+                                        <button onClick={() => handleViewMissionDetails(mission.id)} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm hover:bg-blue-200">
+                                            View
+                                        </button>
+                                        <button onClick={() => handleEditMission(mission.id)} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-md text-sm hover:bg-yellow-200">
+                                            Edit
+                                        </button>
+                                        <button onClick={() => handleDeleteMissionConfirm(mission.id)} className="px-3 py-1 bg-red-100 text-red-800 rounded-md text-sm hover:bg-red-200">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </>
+            )}
+
+            {/* Form for creating/editing missions */}
+            {(currentView === 'create' || currentView === 'edit') && (
+                <MissionForm
+                    title={currentView === 'create' ? "Create New Mission" : "Edit Mission"}
+                    onSave={handleSaveMission}
+                    onCancel={handleBackToMissionList}
+                    initialData={selectedMission}
+                    drones={drones}
+                />
+            )}
+
+            {/* ... The mission detail view is not fully implemented in the provided code, but here is a simple placeholder ... */}
+            {currentView === 'details' && selectedMission && (
+                <MissionDetailView
+                    mission={selectedMission}
+                    onBack={handleBackToMissionList}
+                    drones={drones}
+                />
+            )}
+
+            {/* Confirmation Modal */}
+            {confirmingDeleteMission && (
+                <ConfirmationModal
+                    message={`Are you sure you want to delete mission "${missions.find(m => m.id === confirmingDeleteMission)?.name}"? This action cannot be undone.`}
+                    onConfirm={handleConfirmDeleteMission}
+                    onCancel={handleCancelDeleteMission}
+                />
+            )}
         </div>
-        {/* Status Filter Buttons */}
-        <div className="flex space-x-2 mb-6 bg-white p-2 rounded-lg shadow-sm w-min">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setStatusFilter('Active')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Active' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-          >
-            Active
-          </button>
-          <button
-            onClick={() => setStatusFilter('Scheduled')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Scheduled' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-          >
-            Scheduled
-          </button>
-          <button
-            onClick={() => setStatusFilter('Completed')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Completed' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-          >
-            Completed
-          </button>
-        </div>
-
-        {/* ... The grid of mission cards will go here (from step 1) ... */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMissions.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8 col-span-full">
-              <p className="text-gray-500 text-lg">No missions found matching your criteria.</p>
-            </div>
-          ) : (
-            filteredMissions.map(mission => (
-              <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex justify-between items-start mb-2">
-                  <Link to={`/missions/${mission.id}`} className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors">
-                    {mission.name}
-                  </Link>
-                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>
-                    {mission.status}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
-                <div className="text-sm space-y-2">
-                  <p>
-                    <strong>Drones:</strong>
-                    {mission.droneIds && mission.droneIds.length > 0
-                      ? mission.droneIds.map(droneId => (
-                          <span key={droneId} className="ml-1">
-                            {drones.find(d => d.id === droneId)?.name || `ID: ${droneId}`}
-                          </span>
-                        ))
-                      : 'Unassigned'}
-                  </p>
-                  <p>
-                    <strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}
-                  </p>
-                  <p>
-                    <strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}
-                  </p>
-                  <p>
-                    <strong>Progress:</strong> {mission.progress || 0}%
-                  </p>
-                </div>
-                <div className="flex justify-end space-x-2 mt-4">
-                  <button onClick={() => handleViewMissionDetails(mission.id)} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm hover:bg-blue-200">
-                    View
-                  </button>
-                  <button onClick={() => handleEditMission(mission.id)} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-md text-sm hover:bg-yellow-200">
-                    Edit
-                  </button>
-                  <button onClick={() => handleDeleteMissionConfirm(mission.id)} className="px-3 py-1 bg-red-100 text-red-800 rounded-md text-sm hover:bg-red-200">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </>
-    )}
-
-    {/* Form for creating/editing missions */}
-    {(currentView === 'create' || currentView === 'edit') && (
-      <MissionForm
-        title={currentView === 'create' ? "Create New Mission" : "Edit Mission"}
-        onSave={handleSaveMission}
-        onCancel={handleBackToMissionList}
-        initialData={selectedMission}
-        drones={drones}
-      />
-    )}
-
-    {/* ... The mission detail view is not fully implemented in the provided code, but here is a simple placeholder ... */}
-    {currentView === 'details' && selectedMission && (
-      <MissionDetailView
-        mission={selectedMission}
-        onBack={handleBackToMissionList}
-        drones={drones}
-      />
-    )}
-
-    {/* Confirmation Modal */}
-    {confirmingDeleteMission && (
-      <ConfirmationModal
-        message={`Are you sure you want to delete mission "${missions.find(m => m.id === confirmingDeleteMission)?.name}"? This action cannot be undone.`}
-        onConfirm={handleConfirmDeleteMission}
-        onCancel={handleCancelDeleteMission}
-      />
-    )}
-  </div>
-);
+    );
 };
 const MissionDetailWrapper = ({ missions, displayMessage, drones }) => {
     const { id } = useParams();
@@ -3831,94 +3930,100 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts, 
     const totalFlightHours = drones.reduce((sum, drone) => sum + (drone.flightHours || 0), 0).toFixed(1);
 
     return (
-        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
-            <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Card becomes a clickable link */}
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/assets/drones')}>
-                    <Drone className="w-12 h-12 text-blue-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Total Drones</p>
-                        <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/missions')}>
-                    <Rocket className="w-12 h-12 text-green-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Active Missions</p>
-                        <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/maintenance')}>
-                    <Wrench className="w-12 h-12 text-yellow-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Pending Maintenance</p>
-                        <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/incidents')}>
-                    <AlertCircle className="w-12 h-12 text-red-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Recent Incidents</p>
-                        <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/library/media')}>
-                    <ImageIcon className="w-12 h-12 text-purple-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Media Captured (Today)</p>
-                        <p className="text-3xl font-bold text-gray-900">{mediaToday}</p>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
-                    <Clock className="w-12 h-12 text-indigo-500" />
-                    <div>
-                        <p className="text-gray-500 text-sm">Total Flight Hours</p>
-                        <p className="text-3xl font-bold text-gray-900">{totalFlightHours}h</p>
-                    </div>
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Card becomes a clickable link */}
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/assets/drones')}>
+                <Drone className="w-12 h-12 text-blue-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Total Drones</p>
+                    <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
                 </div>
             </div>
-
-            <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Select a Drone to Stream</h3>
-                <div className="bg-white rounded-xl shadow-md p-6 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone Name</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
-                                <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
-                            </tr>
-                        </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-    {drones.map(drone => (
-        <tr key={drone.id}>
-            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                <Link to={`/assets/drones/${drone.id}`} className="text-blue-600 hover:text-blue-900">{drone.name}</Link>
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                {drone.missionName ? (
-                    <Link to={`/missions/${drone.missionId}`} className="text-blue-600 hover:text-blue-900">{drone.missionName}</Link>
-                ) : (
-                    'Unassigned'
-                )}
-            </td>
-            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button
-                    onClick={() => onStreamSelect(drone)}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                >
-                    <Play className="h-4 w-4 mr-2" /> Start Live Stream
-                </button>
-            </td>
-        </tr>
-    ))}
-</tbody>
-                    </table>
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/missions')}>
+                <Rocket className="w-12 h-12 text-green-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Active Missions</p>
+                    <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/maintenance')}>
+                <Wrench className="w-12 h-12 text-yellow-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Pending Maintenance</p>
+                    <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/incidents')}>
+                <AlertCircle className="w-12 h-12 text-red-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Recent Incidents</p>
+                    <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/library/media')}>
+                <ImageIcon className="w-12 h-12 text-purple-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Media Captured (Today)</p>
+                    <p className="text-3xl font-bold text-gray-900">{mediaToday}</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                <Clock className="w-12 h-12 text-indigo-500" />
+                <div>
+                    <p className="text-gray-500 text-sm">Total Flight Hours</p>
+                    <p className="text-3xl font-bold text-gray-900">{totalFlightHours}h</p>
                 </div>
             </div>
         </div>
-    );
+
+        <div className="mt-8 bg-white rounded-xl shadow-md p-6">
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">Select a Drone to Stream</h3>
+            <div className="bg-white rounded-xl shadow-md p-6 overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
+                            <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {drones.map(drone => {
+                            // Find the mission associated with the current drone
+                            const assignedMission = missions.find(m => m.droneIds && m.droneIds.includes(drone.id));
+                            const missionName = assignedMission ? assignedMission.name : 'Unassigned';
+
+                            return (
+                                <tr key={drone.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <Link to={`/assets/drones/${drone.id}`} className="text-blue-600 hover:text-blue-900">{drone.name}</Link>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                        {assignedMission ? (
+                                            <Link to={`/missions/${assignedMission.id}`} className="text-blue-600 hover:text-blue-900">{missionName}</Link>
+                                        ) : (
+                                            'Unassigned'
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button
+                                            onClick={() => onStreamSelect(drone)}
+                                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            <Play className="h-4 w-4 mr-2" /> Start Live Stream
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+);
 };
 
 
@@ -4361,58 +4466,58 @@ const App = () => {
     useEffect(() => {
         if (!isAuthenticated || !authToken) return;
 
-        const fetchAllInitialData = async () => {
-            try {
-                const apiCalls = [
-                    authenticatedApiRequest('/api/drones'),
-                    authenticatedApiRequest('/api/missions'),
-                    authenticatedApiRequest('/api/media'),
-                    authenticatedApiRequest('/api/incidents'),
-                    authenticatedApiRequest('/api/maintenance_parts'),
-                    authenticatedApiRequest('/api/notifications'),
-                    authenticatedApiRequest('/api/connected_drones'),
-                    authenticatedApiRequest('/api/ground_stations'),
-                    authenticatedApiRequest('/api/equipment'),
-                    authenticatedApiRequest('/api/batteries'),
-                    authenticatedApiRequest('/api/files'),
-                    authenticatedApiRequest('/api/checklists'),
-                    authenticatedApiRequest('/api/tags'),
-                    authenticatedApiRequest('/api/user/profile'),
-                ];
+       const fetchAllInitialData = async () => {
+    try {
+        const apiCalls = [
+            authenticatedApiRequest('/api/drones'),
+            authenticatedApiRequest('/api/missions'),
+            authenticatedApiRequest('/api/media'),
+            authenticatedApiRequest('/api/incidents'),
+            authenticatedApiRequest('/api/maintenance_parts'),
+            authenticatedApiRequest('/api/notifications'),
+            authenticatedApiRequest('/api/connected_drones'),
+            authenticatedApiRequest('/api/ground_stations'),
+            authenticatedApiRequest('/api/equipment'),
+            authenticatedApiRequest('/api/batteries'),
+            authenticatedApiRequest('/api/files'),
+            authenticatedApiRequest('/api/checklists'),
+            authenticatedApiRequest('/api/tags'),
+            authenticatedApiRequest('/api/user/profile'),
+        ];
 
-                if (userRole === 'admin') {
-                    apiCalls.push(authenticatedApiRequest('/api/admin/users'));
-                }
+        if (userRole === 'admin') {
+            apiCalls.push(authenticatedApiRequest('/api/admin/users'));
+        }
 
-                const responses = await Promise.all(apiCalls);
+        const responses = await Promise.all(apiCalls);
 
-                setDrones(responses[0]);
-                setMissions(responses[1]);
-                setMediaItems(responses[2]);
-                setIncidents(responses[3]);
-                setMaintenanceParts(responses[4]);
-                setNotifications(responses[5]);
-                setConnectedDrones(responses[6]);
-                setGroundStations(responses[7]);
-                setEquipment(responses[8]);
-                setBatteries(responses[9]);
-                setFiles(responses[10]);
-                setChecklists(responses[11]);
-                setTags(responses[12]);
-                setUserProfile(responses[13]);
+        setDrones(responses[0]);
+        setMissions(responses[1]);
+        setMediaItems(responses[2]);
+        setIncidents(responses[3]);
+        setMaintenanceParts(responses[4]);
+        setNotifications(responses[5]);
+        setConnectedDrones(responses[6]);
+        setGroundStations(responses[7]);
+        setEquipment(responses[8]);
+        setBatteries(responses[9]);
+        setFiles(responses[10]);
+        setChecklists(responses[11]);
+        setTags(responses[12]);
+        setUserProfile(responses[13]);
 
-                if (userRole === 'admin') {
-                    setUsers(responses[14]);
-                }
+        if (userRole === 'admin') {
+            setUsers(responses[14]);
+        }
 
-            } catch (error) {
-                console.error("Error fetching initial data:", error);
-                displayMessage(`Failed to load system data: ${error.message}`, 'error');
-                if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
-                    handleLogout();
-                }
-            }
-        };
+    } catch (error) {
+        console.error("Error fetching initial data:", error);
+        displayMessage(`Failed to load system data: ${error.message}`, 'error');
+        if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
+            handleLogout();
+        }
+    }
+};
 
         fetchAllInitialData();
 
@@ -4791,10 +4896,16 @@ const App = () => {
                                 />} />
 
                                 {/* Library */}
-                                <Route path="/library/media" element={<Media
-                                    mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia}
-                                    handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia} displayMessage={displayMessage}
-                                />} />
+                                // In App.js
+<Route path="/library/media" element={<Media
+    mediaItems={mediaItems}
+    setMediaItems={setMediaItems}
+    handleAddMedia={handleAddMedia}
+    handleUpdateMedia={handleUpdateMedia}
+    handleDeleteMedia={handleDeleteMedia}
+    displayMessage={displayMessage}
+    drones={drones} // Pass the drones state here
+/>} />
                                 <Route path="/library/files" element={<Files
                                     files={files} setFiles={setFiles} handleAddFile={handleAddFile}
                                     handleUpdateFile={handleUpdateFile} handleDeleteFile={handleDeleteFile} displayMessage={displayMessage}
@@ -4818,9 +4929,13 @@ const App = () => {
     displayMessage={displayMessage}
     drones={drones} // Pass the drones state
 />} />
-                                <Route path="/manage/maintenance" element={<MaintenanceSection
-                                    maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} displayMessage={displayMessage}
-                                />} />
+                                
+<Route path="/manage/maintenance" element={<MaintenanceSection
+    maintenanceParts={maintenanceParts}
+    setMaintenanceParts={setMaintenanceParts}
+    displayMessage={displayMessage}
+    drones={drones} // This prop must be passed correctly
+/>} />
                                 <Route path="/manage/profile-settings" element={<ProfileSettings
                                     user={userProfile} setUser={setUserProfile} displayMessage={displayMessage}
                                     handleUpdateUserProfile={handleUpdateUserProfile} handleChangePassword={handleChangePassword}
