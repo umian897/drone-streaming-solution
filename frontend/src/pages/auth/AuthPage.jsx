@@ -1,6 +1,6 @@
 // src/pages/auth/AuthPage.jsx
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Lock, LogIn, UserPlus } from 'lucide-react';
+import { User, Mail, Lock, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 
 // API_BASE_URL should match your backend Flask app's address
 const API_BASE_URL = 'http://localhost:5000';
@@ -8,6 +8,9 @@ const API_BASE_URL = 'http://localhost:5000';
 const LoginForm = ({ onSwitchToRegister, onLoginSuccess, displayMessage }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,7 +52,7 @@ const LoginForm = ({ onSwitchToRegister, onLoginSuccess, displayMessage }) => {
 
   return (
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
-      <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Welcome Back to AirVibe!</h2>
+      <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Welcome Back to Firnas Air!</h2>
 
       <div>
         <label htmlFor="username" className="sr-only">Username</label>
@@ -80,14 +83,21 @@ const LoginForm = ({ onSwitchToRegister, onLoginSuccess, displayMessage }) => {
           <input
             id="password"
             name="password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="current-password"
             required
-            className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-sky-400 focus:border-sky-400 sm:text-sm"
+            className="appearance-none block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-sky-400 focus:border-sky-400 sm:text-sm"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <button
+            type="button"
+            onClick={togglePasswordVisibility}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+          >
+            {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
+          </button>
         </div>
       </div>
 
@@ -117,12 +127,15 @@ const LoginForm = ({ onSwitchToRegister, onLoginSuccess, displayMessage }) => {
 };
 
 
-const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { // onLoginSuccess added for auto-login after register
+const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMatch, setPasswordMatch] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   useEffect(() => {
     if (password && confirmPassword) {
@@ -144,12 +157,12 @@ const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { 
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/register`, { // Call the new register endpoint
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, email, password, name: username }), // Assuming name can be username for simplicity
+            body: JSON.stringify({ username, email, password, name: username }),
         });
 
         if (!response.ok) {
@@ -161,10 +174,10 @@ const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { 
         const data = await response.json();
         if (data && data.token && data.user) {
             displayMessage('Registration successful! Logging you in...', 'success');
-            onLoginSuccess(data.token, data.user); // Automatically log in after successful registration
+            onLoginSuccess(data.token, data.user);
         } else {
             displayMessage('Registration successful, but response missing login data. Please sign in.', 'warning');
-            onSwitchToLogin(); // Switch to login form if auto-login data is missing
+            onSwitchToLogin();
         }
 
     } catch (error) {
@@ -175,7 +188,7 @@ const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { 
 
   return (
     <form onSubmit={handleSubmit} className="w-full p-8 space-y-6 bg-white rounded-xl shadow-lg">
-      <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Join AirVibe Today!</h2>
+      <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-6">Join Firnas Air Today!</h2>
 
       {/* Username Field */}
       <div>
@@ -229,14 +242,21 @@ const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { 
           <input
             id="password-register"
             name="password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             required
-            className={`appearance-none block w-full pl-10 pr-3 py-2 border ${!passwordMatch ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-teal-400 focus:border-teal-400 sm:text-sm`}
+            className={`appearance-none block w-full pl-10 pr-10 py-2 border ${!passwordMatch ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-teal-400 focus:border-teal-400 sm:text-sm`}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <button
+            type="button"
+            onClick={togglePasswordVisibility}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+          >
+            {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
+          </button>
         </div>
         {!passwordMatch && (
           <p className="mt-2 text-sm text-red-600">Passwords do not match.</p>
@@ -253,14 +273,21 @@ const RegisterForm = ({ onSwitchToLogin, displayMessage, onLoginSuccess }) => { 
           <input
             id="confirm-password"
             name="confirm-password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             required
-            className={`appearance-none block w-full pl-10 pr-3 py-2 border ${!passwordMatch ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-teal-400 focus:border-teal-400 sm:text-sm`}
+            className={`appearance-none block w-full pl-10 pr-10 py-2 border ${!passwordMatch ? 'border-red-500' : 'border-gray-300'} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-teal-400 focus:border-teal-400 sm:text-sm`}
             placeholder="Confirm Password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
+          <button
+            type="button"
+            onClick={togglePasswordVisibility}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+          >
+            {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
+          </button>
         </div>
         {!passwordMatch && (
           <p className="mt-2 text-sm text-red-600">Passwords do not match.</p>
@@ -339,7 +366,7 @@ export default function AuthPage({ onLoginSuccess, displayMessage }) {
                 <circle cx="12" cy="7" r="1.5" fill="white" stroke="none" />
                 <circle cx="12" cy="17" r="1.5" fill="white" stroke="none" />
               </svg>
-              AirVibe
+             Firnas Air
             </h2>
             <p className="text-lg font-light opacity-90 drop-shadow-md">Connecting you to the skies, in real-time.</p>
           </div>

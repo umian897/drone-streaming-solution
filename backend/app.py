@@ -1,17 +1,19 @@
+import os
+import random
 import uuid
 import datetime
-import random
-import time
 import threading
-from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from flask_socketio import SocketIO
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import JSON
-import os
 import subprocess
 import shutil
+import time
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory
+from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO
+from flask_cors import CORS
+from sqlalchemy.dialects.sqlite import JSON
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import atexit
 import sys
 
@@ -26,15 +28,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'dr
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- In-Memory State for Live Data (Not stored in DB) ---
+# --- Live Data and Configuration ---
 connected_drones = ["d1"]
 live_telemetry = {
-    "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859, "longitude": 58.4059, "status": "flying"},
-    "d2": {"altitude": 0, "speed": 0, "battery_percent": 90, "latitude": 24.0000, "longitude": 57.0000, "status": "landed"},
-    "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000, "longitude": 56.0000, "status": "maintenance"},
+    "d1": {"altitude": 50, "speed": 10, "battery_percent": 85, "latitude": 23.5859,
+           "longitude": 58.4059, "status": "flying"},
+    "d2": {"altitude": 0, "speed": 0, "battery_percent": 90, "latitude": 24.0000,
+           "longitude": 57.0000, "status": "landed"},
+    "d3": {"altitude": 0, "speed": 0, "battery_percent": 70, "latitude": 23.0000,
+           "longitude": 56.0000, "status": "maintenance"},
 }
 
-# --- Live Streaming Configuration ---
 HLS_ROOT = os.path.join(basedir, 'hls_streams')
 if not os.path.exists(HLS_ROOT):
     os.makedirs(HLS_ROOT)
@@ -57,9 +61,11 @@ class User(db.Model):
     role = db.Column(db.String(20), nullable=False, default='user')
     def to_dict(self):
         return {
-            "id": self.id, "username": self.username, "name": self.name, "email": self.email,
+            "id": self.id, "username": self.username, "name": self.name, "email":
+            self.email,
             "profilePicture": self.profilePicture, "totalFlights": self.totalFlights,
-            "totalFlightTime": self.totalFlightTime, "averageFlightTime": self.averageFlightTime,
+            "totalFlightTime": self.totalFlightTime, "averageFlightTime":
+            self.averageFlightTime,
             "role": self.role
         }
 
@@ -76,29 +82,8 @@ class Drone(db.Model):
     imageUrl = db.Column(db.String(255))
     type = db.Column(db.String(50), default="Drone")
     maintenanceHistory = db.Column(JSON)
-    
-    # Corrected foreign key relationship to avoid ambiguity
     mission_id = db.Column(db.String(36), db.ForeignKey('mission.id'), nullable=True)
     mission = db.relationship('Mission', backref=db.backref('drones', lazy=True), foreign_keys=[mission_id])
-    
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "model": self.model,
-            "manufacturer": self.manufacturer,
-            "uniqueld": self.uniqueld,
-            "status": self.status,
-            "lastLocation": self.lastLocation,
-            "flightHours": self.flightHours,
-            "payloadCapacity": self.payloadCapacity,
-            "imageUrl": self.imageUrl,
-            "type": self.type,
-            "maintenanceHistory": self.maintenanceHistory,
-            "missionId": self.mission_id,
-            "missionName": self.mission.name if self.mission else None
-        }
-    
     def to_dict(self):
         return {
             "id": self.id,
@@ -131,9 +116,12 @@ class GroundStation(db.Model):
     maintenanceHistory = db.Column(JSON)
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
-            "uniqueld": self.uniqueld, "status": self.status, "coverageArea": self.coverageArea,
-            "powerSource": self.powerSource, "imageUrl": self.imageUrl, "type": self.type,
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer":
+            self.manufacturer,
+            "uniqueld": self.uniqueld, "status": self.status, "coverageArea":
+            self.coverageArea,
+            "powerSource": self.powerSource, "imageUrl": self.imageUrl, "type":
+            self.type,
             "maintenanceHistory": self.maintenanceHistory
         }
 
@@ -151,9 +139,12 @@ class Equipment(db.Model):
     maintenanceHistory = db.Column(JSON)
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
-            "uniqueld": self.uniqueld, "status": self.status, "equipmentType": self.equipmentType,
-            "compatibility": self.compatibility, "imageUrl": self.imageUrl, "type": self.type,
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer":
+            self.manufacturer,
+            "uniqueld": self.uniqueld, "status": self.status, "equipmentType":
+            self.equipmentType,
+            "compatibility": self.compatibility, "imageUrl": self.imageUrl, "type":
+            self.type,
             "maintenanceHistory": self.maintenanceHistory
         }
 
@@ -172,20 +163,19 @@ class Battery(db.Model):
     maintenanceHistory = db.Column(JSON)
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "model": self.model, "manufacturer": self.manufacturer,
-            "uniqueld": self.uniqueld, "status": self.status, "capacity": self.capacity,
+            "id": self.id, "name": self.name, "model": self.model, "manufacturer":
+            self.manufacturer,
+            "uniqueld": self.uniqueld, "status": self.status, "capacity":
+            self.capacity,
             "cycleCount": self.cycleCount, "lastCharged": self.lastCharged,
-            "imageUrl": self.imageUrl, "type": self.type, "maintenanceHistory": self.maintenanceHistory
+            "imageUrl": self.imageUrl, "type": self.type, "maintenanceHistory":
+            self.maintenanceHistory
         }
 
 class Mission(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120), nullable=False)
-    
-    # Corrected relationship with explicit foreign_keys
-    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'))
-    drone = db.relationship('Drone', foreign_keys=[drone_id])
-
+    drone_ids = db.Column(JSON)
     start_time = db.Column(db.DateTime)
     end_time = db.Column(db.DateTime)
     details = db.Column(db.Text)
@@ -193,13 +183,16 @@ class Mission(db.Model):
     progress = db.Column(db.Integer)
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "droneId": self.drone_id,
+            "id": self.id,
+            "name": self.name,
+            "droneIds": self.drone_ids if self.drone_ids else [],
             "startTime": self.start_time.isoformat() + 'Z' if self.start_time else None,
             "endTime": self.end_time.isoformat() + 'Z' if self.end_time else None,
-            "details": self.details, "status": self.status, "progress": self.progress
+            "details": self.details,
+            "status": self.status,
+            "progress": self.progress
         }
-    
-        
+
 class Media(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = db.Column(db.String(120))
@@ -216,7 +209,8 @@ class Media(db.Model):
     def to_dict(self):
         return {
             "id": self.id, "title": self.title, "type": self.type, "url": self.url,
-            "thumbnail": self.thumbnail, "droneId": self.droneId, "missionId": self.missionId,
+            "thumbnail": self.thumbnail, "droneId": self.droneId, "missionId":
+            self.missionId,
             "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None,
             "gps": self.gps, "tags": self.tags, "description": self.description,
             "date": self.date.isoformat() if self.date else None
@@ -234,7 +228,8 @@ class File(db.Model):
     def to_dict(self):
         return {
             "id": self.id, "name": self.name, "type": self.type, "url": self.url,
-            "category": self.category, "description": self.description, "size": self.size,
+            "category": self.category, "description": self.description, "size":
+            self.size,
             "uploadDate": self.uploadDate.isoformat() if self.uploadDate else None
         }
 
@@ -249,9 +244,12 @@ class Checklist(db.Model):
     completionNotes = db.Column(db.Text)
     def to_dict(self):
         return {
-            "id": self.id, "name": self.name, "description": self.description, "items": self.items,
-            "type": self.type, "completedBy": self.completedBy, "completionNotes": self.completionNotes,
-            "dateCompleted": self.dateCompleted.isoformat() if self.dateCompleted else None
+            "id": self.id, "name": self.name, "description": self.description, "items":
+            self.items,
+            "type": self.type, "completedBy": self.completedBy, "completionNotes":
+            self.completionNotes,
+            "dateCompleted": self.dateCompleted.isoformat() if self.dateCompleted else
+            None
         }
 
 class Tag(db.Model):
@@ -267,10 +265,13 @@ class Incident(db.Model):
     message = db.Column(db.Text)
     timestamp = db.Column(db.DateTime)
     resolved = db.Column(db.Boolean, default=False)
+    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True) # New field
     def to_dict(self):
         return {
-            "id": self.id, "type": self.type, "message": self.message, "resolved": self.resolved,
-            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None
+            "id": self.id, "type": self.type, "message": self.message, "resolved":
+            self.resolved,
+            "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None,
+            "droneId": self.drone_id
         }
 
 class MaintenancePart(db.Model):
@@ -279,11 +280,15 @@ class MaintenancePart(db.Model):
     status = db.Column(db.String(50))
     lastMaintenance = db.Column(db.Date)
     nextMaintenance = db.Column(db.Date)
+    drone_id = db.Column(db.String(36), db.ForeignKey('drone.id'), nullable=True) # New field
     def to_dict(self):
         return {
             "id": self.id, "name": self.name, "status": self.status,
-            "lastMaintenance": self.lastMaintenance.isoformat() if self.lastMaintenance else None,
-            "nextMaintenance": self.nextMaintenance.isoformat() if self.nextMaintenance else None
+            "lastMaintenance": self.lastMaintenance.isoformat() if self.lastMaintenance
+            else None,
+            "nextMaintenance": self.nextMaintenance.isoformat() if self.nextMaintenance
+            else None,
+            "droneId": self.drone_id
         }
 
 class Notification(db.Model):
@@ -294,7 +299,8 @@ class Notification(db.Model):
     timestamp = db.Column(db.DateTime)
     def to_dict(self):
         return {
-            "id": self.id, "message": self.message, "type": self.type, "read": self.read,
+            "id": self.id, "message": self.message, "type": self.type, "read":
+            self.read,
             "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None
         }
 
@@ -306,7 +312,16 @@ def init_db_command():
         db.create_all()
         if not User.query.filter_by(username='admin').first():
             print("Seeding database with initial data...")
-            # Seeding logic remains the same
+            # Create a hashed password for the initial admin user
+            admin_password_hash = generate_password_hash("adminpassword")
+            admin_user = User(
+                username='admin',
+                password=admin_password_hash,
+                name='Admin User',
+                email='admin@firnasair.com',
+                role='admin'
+            )
+            db.session.add(admin_user)
             db.session.commit()
             print("Database initialized and seeded.")
         else:
@@ -316,20 +331,19 @@ def init_db_command():
 def get_current_user_from_request():
     """
     Retrieves the current user based on the mock token in the request header.
-    In a real application, this would involve validating a JWT token.
     """
     auth_token = request.headers.get('X-Auth-Token')
     if not auth_token:
-        # If no token is provided, a user is not authenticated.
         return None
-    
     # For development, we use mock tokens to simulate different user roles.
     if auth_token == "mock-admin-token":
-        return User.query.filter_by(role='admin').first()
+        # Find the admin user (or create a temporary one for mock purposes)
+        admin_user = User.query.filter_by(role='admin').first()
+        return admin_user
     elif auth_token.startswith("mock-token-"):
-        # This assumes any token starting with 'mock-token-' is a valid standard user.
-        return User.query.filter_by(role='user').first()
-        
+        # This is a simplified check for a 'standard user'
+        user = User.query.filter_by(role='user').first()
+        return user
     return None
 
 def login_required(f):
@@ -360,6 +374,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# List of allowed file extensions
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def parse_datetime_str(iso_string):
     if not iso_string: return None
     return datetime.datetime.fromisoformat(iso_string.replace('Z', ""))
@@ -385,6 +405,8 @@ def handle_crud(model, item_id=None):
             if model == Mission:
                 data['start_time'] = parse_datetime_str(data.get('startTime'))
                 data['end_time'] = parse_datetime_str(data.get('endTime'))
+                if 'droneIds' in data:
+                    data['drone_ids'] = data.pop('droneIds')
             elif model == Media:
                 data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
                 data['date'] = datetime.date.today()
@@ -392,9 +414,16 @@ def handle_crud(model, item_id=None):
                 data['uploadDate'] = datetime.date.today()
             elif model == Incident:
                 data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
+                data['drone_id'] = data.pop('droneId', None) # New field
             elif model == MaintenancePart:
                 data['lastMaintenance'] = parse_date_str(data.get('lastMaintenance'))
                 data['nextMaintenance'] = parse_date_str(data.get('nextMaintenance'))
+                data['drone_id'] = data.pop('droneId', None) # New field
+            
+            # Special handling for password hashing on user creation
+            if model == User and 'password' in data:
+                data['password'] = generate_password_hash(data['password'])
+
             new_item = model(**data)
             db.session.add(new_item)
             db.session.commit()
@@ -404,21 +433,27 @@ def handle_crud(model, item_id=None):
         elif request.method == 'PUT':
             item = model.query.get_or_404(item_id)
             if model == Mission:
-                if data.get('startTime'): data['start_time'] = parse_datetime_str(data['startTime'])
-                if data.get('endTime'): data['end_time'] = parse_datetime_str(data['endTime'])
+                if data.get('startTime'): data['start_time'] = parse_datetime_str(data.pop('startTime'))
+                if data.get('endTime'): data['end_time'] = parse_datetime_str(data.pop('endTime'))
+                if 'droneIds' in data:
+                    data['drone_ids'] = data.pop('droneIds')
             elif model == MaintenancePart:
                 if data.get('lastMaintenance'): data['lastMaintenance'] = parse_date_str(data['lastMaintenance'])
                 if data.get('nextMaintenance'): data['nextMaintenance'] = parse_date_str(data['nextMaintenance'])
+            elif model == User and 'password' in data:
+                # Hash the new password if it exists
+                data['password'] = generate_password_hash(data['password'])
+            
             for key, value in data.items():
                 if hasattr(item, key):
                     setattr(item, key, value)
             db.session.commit()
             return jsonify(item.to_dict())
-        elif request.method == 'DELETE':
-            item = model.query.get_or_404(item_id)
-            db.session.delete(item)
-            db.session.commit()
-            return "", 204
+    elif request.method == 'DELETE':
+        item = model.query.get_or_404(item_id)
+        db.session.delete(item)
+        db.session.commit()
+        return "", 204
 
 # --- API Endpoints ---
 @app.route('/api/login', methods=['POST'])
@@ -428,53 +463,37 @@ def login():
     password = data.get('password')
     if not username or not password:
         return jsonify({"error": "Username and password are required"}), 400
-
     user = User.query.filter_by(username=username).first()
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({"error": "Invalid credentials"}), 401
     
-    # If user doesn't exist or is not an admin, we just create a new user and log them in
-    if not user or user.role != 'admin':
-        
-        new_token = f"mock-token-{str(uuid.uuid4())}"
-        
-        # Check if username is 'admin' to set the role
-        role = 'admin' if username == 'admin' else 'user'
-        
-        if not user:
-            # If the user doesn't exist, create a new one
-            new_user = User(username=username, password=password, role=role, name=username, email=f"{username}@example.com")
-            db.session.add(new_user)
-            db.session.commit()
-            user_to_return = new_user.to_dict()
-        else:
-            # If the user exists but is not an admin, just get their data
-            user_to_return = user.to_dict()
-            
-        return jsonify({"message": "Login successful", "token": new_token, "user": user_to_return}), 200
-
-    # For the admin user, we still use the hardcoded password and a different token
-    if user.password == password:
-        return jsonify({"message": "Login successful", "token": "mock-admin-token", "user": user.to_dict()}), 200
-    
-    return jsonify({"error": "Invalid credentials"}), 401
+    new_token = "mock-admin-token" if user.role == 'admin' else f"mock-token-{str(uuid.uuid4())}"
+    return jsonify({"message": "Login successful", "token": new_token, "user": user.to_dict()}), 200
 
 @app.route('/api/register', methods=['POST'])
 def register_user():
     data = request.json
     username = data.get('username')
-    
+    password = data.get('password')
+    email = data.get('email')
+
+    if not username or not password or not email:
+        return jsonify({"error": "Username, password, and email are required"}), 400
+
     if User.query.filter_by(username=username).first():
         return jsonify({"error": "Username already exists"}), 409
 
-    new_user = User(username=username, password=data.get('password'),
-                    name=data.get('name'), email=data.get('email'), role='user')
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email already exists"}), 409
+    
+    hashed_password = generate_password_hash(password)
+    
+    new_user = User(username=username, password=hashed_password, name=username, email=email, role='user')
     db.session.add(new_user)
     db.session.commit()
     
-    # A generic token for new users
     new_token = f"mock-token-{str(uuid.uuid4())}"
-    
     return jsonify({"message": "Registration successful", "token": new_token, "user": new_user.to_dict()}), 201
-
 
 # User Endpoints
 @app.route('/api/admin/users', methods=['GET', 'POST'])
@@ -542,7 +561,6 @@ def manage_batteries(): return handle_crud(Battery)
 def manage_battery(bat_id): return handle_crud(Battery, item_id=bat_id)
 
 # Mission Endpoints
-# Mission Endpoints
 @app.route('/api/missions', methods=['GET', 'POST'])
 @login_required
 def manage_missions(): return handle_crud(Mission)
@@ -551,28 +569,39 @@ def manage_missions(): return handle_crud(Mission)
 @login_required
 def manage_mission(mission_id): return handle_crud(Mission, item_id=mission_id)
 
-@app.route('/api/missions/<string:mission_id>/assign', methods=['POST'])
-@login_required
-def assign_mission_to_drone(mission_id):
-    data = request.get_json()
-    drone_id = data.get('drone_id')
-    
-    if not drone_id:
-        return jsonify({"error": "Drone ID is required"}), 400
-
-    mission = Mission.query.get_or_404(mission_id)
-    drone = Drone.query.get_or_404(drone_id)
-
-    drone.mission_id = mission.id
-    db.session.commit()
-    
-    socketio.emit('drone_updated', drone.to_dict())
-    
-    return jsonify(drone.to_dict()), 200
 # Media Endpoints
 @app.route('/api/media', methods=['GET', 'POST'])
 @login_required
-def manage_media_all(): return handle_crud(Media)
+def manage_media_all():
+    if request.method == 'GET':
+        media_items = db.session.query(Media, Drone, Mission).\
+            outerjoin(Drone, Media.droneId == Drone.id).\
+            outerjoin(Mission, Media.missionId == Mission.id).\
+            order_by(Media.timestamp.desc()).all()
+        result = []
+        for media, drone, mission in media_items:
+            media_dict = media.to_dict()
+            media_dict['droneName'] = drone.name if drone else 'N/A'
+            media_dict['missionName'] = mission.name if mission else 'N/A'
+            result.append(media_dict)
+        return jsonify(result)
+    return handle_crud(Media)
+
+@app.route('/api/media/by_drone/<string:drone_id>', methods=['GET'])
+@login_required
+def get_media_by_drone(drone_id):
+    media_items = db.session.query(Media, Drone, Mission).\
+        outerjoin(Drone, Media.droneId == Drone.id).\
+        outerjoin(Mission, Media.missionId == Mission.id).\
+        filter(Media.droneId == drone_id).\
+        order_by(Media.timestamp.desc()).all()
+    result = []
+    for media, drone, mission in media_items:
+        media_dict = media.to_dict()
+        media_dict['droneName'] = drone.name if drone else 'N/A'
+        media_dict['missionName'] = mission.name if mission else 'N/A'
+        result.append(media_dict)
+    return jsonify(result)
 
 @app.route('/api/media/<string:media_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
@@ -656,8 +685,8 @@ def manage_user_profile():
 def change_password():
     user = request.current_user
     data = request.json
-    if user.password == data.get('current_password'):
-        user.password = data.get('new_password')
+    if check_password_hash(user.password, data.get('current_password')):
+        user.password = generate_password_hash(data.get('new_password'))
         db.session.commit()
         return jsonify({"message": "Password changed successfully"})
     return jsonify({"error": "Incorrect current password"}), 401
@@ -670,6 +699,29 @@ def update_profile_picture():
     user.profilePicture = data.get('profile_picture_url', user.profilePicture)
     db.session.commit()
     return jsonify(user.to_dict())
+    
+# --- File Upload Endpoints ---
+@app.route('/api/upload_profile_picture', methods=['POST'])
+@login_required
+def upload_profile_picture():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        upload_folder = os.path.join(app.root_path, 'uploads')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+        return jsonify({"url": f"/uploads/{filename}"}), 200
+    return jsonify({"error": "File type not allowed"}), 400
+
+@app.route('/uploads/<filename>')
+def serve_uploaded_file(filename):
+    return send_from_directory(os.path.join(app.root_path, 'uploads'), filename)
 
 # Live Data Endpoints
 @app.route('/api/connected_drones', methods=['GET'])
@@ -690,34 +742,30 @@ def command_drone(drone_id):
         elif command == "land":
             if drone_in_db: drone_in_db.status = "Available"
         elif command == "take_photo":
-            new_media = Media(title=f"Photo from {drone_id}", type="image", droneId=drone_id,
-                              date=datetime.date.today(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+            new_media = Media(title=f"Photo from {drone_id}", type="image",
+                              droneId=drone_id,
+                              date=datetime.date.today(),
+                              timestamp=datetime.datetime.now(datetime.timezone.utc))
             db.session.add(new_media)
             socketio.emit('new_media_available', new_media.to_dict())
-        db.session.commit()
-    socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry": live_telemetry.get(drone_id, {})})
-    return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
+            db.session.commit()
+        socketio.emit('drone_telemetry_update', {"drone_id": drone_id, "telemetry":
+                                                 live_telemetry.get(drone_id, {})})
+        return jsonify({"message": f"Command '{command}' sent to drone {drone_id}"}), 200
 
 # --- Live Streaming Endpoints ---
-
 @app.route('/api/stream/<string:drone_id>/start', methods=['POST'])
 @login_required
 def start_stream(drone_id):
     print(f"DEBUG: Attempting to start stream for drone {drone_id}", flush=True)
     if FFMPEG_PATH is None:
         return jsonify({"error": "FFmpeg executable not found. Please install it."}), 500
-    
-    # Check if a process is already running for this drone
     if drone_id in active_ffmpeg_processes and active_ffmpeg_processes[drone_id].poll() is None:
         return jsonify({"message": f"Stream for drone {drone_id} is already active."}), 200
-
-    # Ensure the output directory is clean
     stream_dir = os.path.join(HLS_ROOT, drone_id)
     if os.path.exists(stream_dir):
         shutil.rmtree(stream_dir)
     os.makedirs(stream_dir)
-
-    # FFmpeg command to transcode RTMP to HLS
     hls_playlist_path = os.path.join(stream_dir, 'index.m3u8')
     rtmp_stream_url = f"{RTMP_SERVER_URL}/{drone_id}"
     command = [
@@ -732,7 +780,6 @@ def start_stream(drone_id):
         '-hls_flags', 'delete_segments',
         hls_playlist_path
     ]
-    
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
@@ -740,17 +787,15 @@ def start_stream(drone_id):
             error_output = process.stderr.read().decode('utf-8')
             print(f"FFmpeg failed to start for drone {drone_id}. Error: {error_output}", file=sys.stderr)
             return jsonify({"error": "Failed to start FFmpeg. Check backend logs for details."}), 500
-        
         active_ffmpeg_processes[drone_id] = process
         print(f"Started FFmpeg for drone {drone_id}. HLS available at hls_streams/{drone_id}/index.m3u8")
-        
         return jsonify({"message": f"Stream for drone {drone_id} started."}), 200
     except FileNotFoundError:
         return jsonify({"error": "FFmpeg not found. Please ensure it's installed and in your PATH."}), 500
     except Exception as e:
         print(f"Error starting FFmpeg for drone {drone_id}: {e}", file=sys.stderr)
         return jsonify({"error": f"Failed to start stream: {str(e)}"}), 500
-    
+
 @app.route('/api/stream/<string:drone_id>/stop', methods=['POST'])
 @login_required
 def stop_stream(drone_id):
@@ -766,8 +811,7 @@ def stop_stream(drone_id):
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-        del active_ffmpeg_processes[drone_id]
-
+            del active_ffmpeg_processes[drone_id]
         stream_dir = os.path.join(HLS_ROOT, drone_id)
         if os.path.exists(stream_dir):
             shutil.rmtree(stream_dir)
@@ -791,18 +835,20 @@ def simulate_drone_telemetry():
         with app.app_context():
             active_missions = Mission.query.filter_by(status='Active').all()
             for mission in active_missions:
-                if mission.drone_id not in connected_drones:
-                    connected_drones.append(mission.drone_id)
+                for drone_id in mission.drone_ids:
+                    if drone_id not in connected_drones:
+                        connected_drones.append(drone_id)
                 if mission.progress < 100:
                     mission.progress = min(100, mission.progress + random.randint(1, 5))
                 if mission.progress >= 100:
                     completed_mission_name = mission.name
                     mission.status = "Completed"
-                    if mission.drone_id in connected_drones:
-                        connected_drones.remove(mission.drone_id)
-                    drone = Drone.query.get(mission.drone_id)
-                    if drone:
-                        drone.status = "Available"
+                    for drone_id in mission.drone_ids:
+                        if drone_id in connected_drones:
+                            connected_drones.remove(drone_id)
+                        drone = Drone.query.get(drone_id)
+                        if drone:
+                            drone.status = "Available"
                     socketio.emit('new_notification', {'message': f"Mission '{completed_mission_name}' completed!"})
                     db.session.commit()
             for drone_id in list(connected_drones):
@@ -828,17 +874,11 @@ def shutdown_ffmpeg_processes():
         if os.path.exists(stream_dir):
             shutil.rmtree(stream_dir)
     print("All FFmpeg processes shut down.")
-
 atexit.register(shutdown_ffmpeg_processes)
 
 # --- Main Execution ---
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        # Seeding logic if needed
-    
-    # This thread will start simulating telemetry data
     threading.Thread(target=simulate_drone_telemetry, daemon=True).start()
-    
-    # This is the corrected way to run Flask-SocketIO in a Docker environment
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

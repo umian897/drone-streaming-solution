@@ -2,7 +2,8 @@
 // import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+
+import { Routes, Route, Link, useLocation, useNavigate,useParams } from 'react-router-dom';
 import {
     LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
     Book, FileText, CheckSquare, Tag, Settings, AlertCircle, Wrench, Bell, UserCircle,
@@ -280,7 +281,8 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
     const [uniqueld, setUniqueld] = useState(initialData?.uniqueld || '');
     const [status, setStatus] = useState(initialData?.status || 'Available');
     const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
-
+    const [imageFile, setImageFile] = useState(null); // New state for the file object
+    const [previewUrl, setPreviewUrl] = useState(initialData?.imageUrl || ""); // New state for image preview   
     const [lastLocation, setLastLocation] = useState(initialData?.lastLocation || '');
     const [flightHours, setFlightHours] = useState(initialData?.flightHours || '');
     const [payloadCapacity, setPayloadCapacity] = useState(initialData?.payloadCapacity || '');
@@ -304,7 +306,7 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
             manufacturer,
             uniqueld,
             status,
-            imageUrl,
+            imageUrl: imageFile ? `http://localhost/uploads/${imageFile.name}` : imageUrl,
             type: assetType,
             maintenanceHistory: initialData?.maintenanceHistory || [],
         };
@@ -326,16 +328,44 @@ const AddItemForm = ({ title, onSave, onCancel, assetType, initialData = null })
 
         onSave(newItem);
     };
-
+    const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+        setImageFile(file);
+        const url = URL.createObjectURL(file);
+        setPreviewUrl(url);
+        // For simplicity, we'll clear the URL field when a file is selected
+        setImageUrl('');
+    }
+};
     return (
         <div className="p-6 bg-white rounded-xl shadow-md">
             <h3 className="text-2xl font-bold text-gray-800 mb-4">{initialData ? `Edit ${title}` : `Add New ${title}`}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700">Image URL (Placeholder)</label>
-                    <input type="text" id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., https://placehold.co/400x300/..." />
-                    <p className="mt-1 text-xs text-gray-500">For real implementation, this would be a file upload.</p>
-                </div>
+    <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700">Image URL or Upload</label>
+    <div className="flex items-center space-x-2">
+        <input 
+            type="text" 
+            id="imageUrl" 
+            value={imageUrl} 
+            onChange={(e) => setImageUrl(e.target.value)} 
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" 
+            placeholder="e.g., https://placehold.co/400x300/..." 
+        />
+        <span className="text-gray-500">OR</span>
+        <label className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-md shadow-sm cursor-pointer hover:bg-blue-600">
+            <Upload className="w-4 h-4 mr-2" /> Upload Image
+            <input 
+                type="file" 
+                onChange={handleFileChange} 
+                className="hidden" 
+                accept="image/*" 
+            />
+        </label>
+    </div>
+    {previewUrl && <img src={previewUrl} alt="Preview" className="mt-4 max-w-full h-auto rounded-md shadow-md" />}
+</div>
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
                     <input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
@@ -687,26 +717,30 @@ const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelet
     );
 };
 
-const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
-    const [currentView, setCurrentView] = useState('list');
+
+const Media = ({ mediaItems, setMediaItems, drones, missions, handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
+    const [currentView, setCurrentView] = useState('folders');
     const [selectedMedia, setSelectedMedia] = useState(null);
+    const [selectedDroneMedia, setSelectedDroneMedia] = useState([]);
+    const [selectedDroneName, setSelectedDroneName] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('all');
     const [confirmingDeleteMedia, setConfirmingDeleteMedia] = useState(null);
 
-    const filteredMedia = (mediaItems || []).filter(item => {
-        const matchesType = filterType === 'all' || item.type === filterType;
-        const matchesSearch =
-            (item.title && item.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (item.droneId && item.droneId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (item.missionId && item.missionId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (item.tags && Array.isArray(item.tags) && item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
-        return matchesType && matchesSearch;
-    });
+    // This function will fetch media for a specific drone
+    const handleViewDroneFolder = async (droneId, droneName) => {
+        try {
+            const media = await authenticatedApiRequest(`/api/media/by_drone/${droneId}`);
+            setSelectedDroneMedia(media);
+            setSelectedDroneName(droneName);
+            setCurrentView('drone-media-list');
+        } catch (error) {
+            displayMessage('Failed to load media for this drone.', 'error');
+        }
+    };
 
-    const handleViewMediaDetails = (id) => {
-        setSelectedMedia(mediaItems.find(item => item.id === id));
+    const handleViewMediaDetails = (item) => {
+        setSelectedMedia(item);
         setCurrentView('details');
     };
 
@@ -724,7 +758,7 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
             tags: updatedMedia.tags
         });
         if (success) {
-            setCurrentView('list');
+            setCurrentView('drone-media-list');
             setSelectedMedia(null);
         }
     };
@@ -760,7 +794,13 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
         if (success) {
             setConfirmingDeleteMedia(null);
             setSelectedMedia(null);
-            setCurrentView('list');
+            setCurrentView('drone-media-list');
+            // Re-fetch the media list for the selected drone to reflect the change
+            if (selectedDroneMedia.length > 0) {
+                handleViewDroneFolder(selectedDroneMedia[0].droneId, selectedDroneName);
+            } else {
+                setCurrentView('folders');
+            }
         }
     };
 
@@ -769,12 +809,27 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
     };
 
     const handleBackToMediaList = () => {
-        setCurrentView('list');
+        if (selectedDroneMedia.length > 0) {
+            setCurrentView('drone-media-list');
+        } else {
+            setCurrentView('folders');
+        }
         setSelectedMedia(null);
     };
+    
+    // Filtering logic for the drone-specific media list
+    const filteredDroneMedia = (selectedDroneMedia || []).filter(item => {
+        const matchesType = filterType === 'all' || item.type === filterType;
+        const matchesSearch =
+            (item.title && item.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (item.missionId && item.missionId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (item.tags && Array.isArray(item.tags) && item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
+        return matchesType && matchesSearch;
+    });
 
     if (currentView === 'upload') {
-        return <UploadMediaForm onSave={handleAddMedia} onCancel={handleBackToMediaList} />;
+        return <UploadMediaForm onSave={handleAddMedia} onCancel={handleBackToMediaList} drones={drones} missions={missions} />;
     }
     if (currentView === 'edit-media') {
         return <EditMediaForm onSave={handleSaveMedia} onCancel={handleBackToMediaList} initialData={selectedMedia} />;
@@ -800,88 +855,121 @@ const Media = ({ mediaItems, setMediaItems, handleAddMedia, handleUpdateMedia, h
             </>
         );
     }
-
+    
+    // Main render block with conditional views
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)]">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Captured Media Library</h2>
 
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
-                <button
-                    onClick={() => setCurrentView('upload')}
-                    className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 w-full sm:w-auto justify-center"
-                >
-                    <Upload className="w-5 h-5 mr-2" /> Upload Media
-                </button>
-                <div className="flex space-x-2 bg-white p-2 rounded-lg shadow-sm">
-                    <button
-                        onClick={() => setFilterType('all')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                    >
-                        All
-                    </button>
-                    <button
-                        onClick={() => setFilterType('image')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'image' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                    >
-                        Images
-                    </button>
-                    <button
-                        onClick={() => setFilterType('video')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'video' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                    >
-                        Videos
-                    </button>
-                </div>
-                <div className="relative w-full sm:w-auto">
-                    <input
-                        type="text"
-                        placeholder="Search media..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full sm:w-64 p-2 pl-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                </div>
-            </div>
-
-            {filteredMedia.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
-                    <p className="text-gray-500 text-lg">No media items found matching your criteria.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 flex-1">
-                    {filteredMedia.map(item => (
-                        <div key={item.id} className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col cursor-pointer" onClick={() => handleViewMediaDetails(item.id)}>
-                            <div className="relative w-full h-48 bg-gray-200 flex items-center justify-center">
-                                {item.type === 'image' ? (
-                                    <img src={item.url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Image+Error'; }} />
-                                ) : (
-                                    <video src={item.url} controls={false} className="w-full h-full object-cover" poster={item.thumbnail} onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Video+Error'; }}></video>
-                                )}
-                                <span className="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full flex items-center">
-                                    {item.type === 'video' ? <VideoIcon className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} {item.type.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="p-4 flex-grow flex flex-col">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
-                                <p className="text-gray-600 text-sm flex-grow mb-2">{item.description}</p>
-                                <div className="flex justify-between items-center text-xs text-gray-500 mt-auto">
-                                    <span>Drone ID: {item.droneId}</span>
-                                    <span>{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}</span>
+            {currentView === 'folders' && (
+                <>
+                    <p className="text-gray-600 mb-4">Select a drone to view its captured media.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {drones.length > 0 ? (
+                            drones.map(drone => (
+                                <div key={drone.id} className="bg-white rounded-xl shadow-md p-6 flex flex-col items-center cursor-pointer hover:bg-gray-100 transition-colors"
+                                    onClick={() => handleViewDroneFolder(drone.id, drone.name)}>
+                                    <Folder className="w-16 h-16 text-blue-500 mb-4" />
+                                    <h3 className="text-lg font-semibold text-gray-900">{drone.name}</h3>
+                                    <p className="text-sm text-gray-500">ID: {drone.uniqueld}</p>
                                 </div>
-                                <div className="flex justify-end space-x-2 mt-3">
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(item.url, '_blank'); }} className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="Download">
-                                        <Download className="w-5 h-5" />
-                                    </button>
-                                    <button onClick={(e) => { e.stopPropagation(); confirmDeleteMedia(item.id); }} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete">
-                                        <Trash2 className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                            ))
+                        ) : (
+                            <p className="text-gray-500 text-lg">No drones found.</p>
+                        )}
+                    </div>
+                </>
             )}
+
+            {currentView === 'drone-media-list' && (
+                <>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold text-gray-800">Media from {selectedDroneName}</h2>
+                        <button onClick={() => setCurrentView('folders')} className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            <Folder className="w-4 h-4 mr-2" /> Back to Drones
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
+                        <button
+                            onClick={() => setCurrentView('upload')}
+                            className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 w-full sm:w-auto justify-center"
+                        >
+                            <Upload className="w-5 h-5 mr-2" /> Upload Media
+                        </button>
+                        <div className="flex space-x-2 bg-white p-2 rounded-lg shadow-sm">
+                            <button
+                                onClick={() => setFilterType('all')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                            >
+                                All
+                            </button>
+                            <button
+                                onClick={() => setFilterType('image')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'image' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                            >
+                                Images
+                            </button>
+                            <button
+                                onClick={() => setFilterType('video')}
+                                className={`px-4 py-2 rounded-md text-sm font-medium ${filterType === 'video' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                            >
+                                Videos
+                            </button>
+                        </div>
+                        <div className="relative w-full sm:w-auto">
+                            <input
+                                type="text"
+                                placeholder="Search media..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full sm:w-64 p-2 pl-10 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        </div>
+                    </div>
+
+                    {filteredDroneMedia.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+                            <p className="text-gray-500 text-lg">No media items found for this drone.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 flex-1">
+                            {filteredDroneMedia.map(item => (
+                                <div key={item.id} className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col cursor-pointer" onClick={() => handleViewMediaDetails(item)}>
+                                    <div className="relative w-full h-48 bg-gray-200 flex items-center justify-center">
+                                        {item.type === 'image' ? (
+                                            <img src={item.url} alt={item.title} className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Image+Error'; }} />
+                                        ) : (
+                                            <video src={item.url} controls={false} className="w-full h-full object-cover" poster={item.thumbnail} onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x300/cccccc/333333?text=Video+Error'; }}></video>
+                                        )}
+                                        <span className="absolute bottom-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full flex items-center">
+                                            {item.type === 'video' ? <VideoIcon className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} {item.type.toUpperCase()}
+                                        </span>
+                                    </div>
+                                    <div className="p-4 flex-grow flex flex-col">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
+                                        <p className="text-gray-600 text-sm flex-grow mb-2">Mission: {item.missionName}</p>
+                                        <div className="flex justify-between items-center text-xs text-gray-500 mt-auto">
+                                            <span>Drone ID: {item.droneId}</span>
+                                            <span>{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}</span>
+                                        </div>
+                                        <div className="flex justify-end space-x-2 mt-3">
+                                            <button onClick={(e) => { e.stopPropagation(); window.open(item.url, '_blank'); }} className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors" title="Download">
+                                                <Download className="w-5 h-5" />
+                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); confirmDeleteMedia(item.id); }} className="p-2 rounded-full text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors" title="Delete">
+                                                <Trash2 className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
             {confirmingDeleteMedia && (
                 <ConfirmationModal
                     message={`Are you sure you want to delete this media item? This action cannot be undone.`}
@@ -1611,20 +1699,20 @@ const Tags = ({ tags, setTags, displayMessage, handleAddTag, handleUpdateTag, ha
 
 // --- 3. MANAGE COMPONENTS (Incidents, Maintenance, Profile Settings, Notifications) ---
 
-function IncidentSection({ incidents, handleAddIncident, handleUpdateIncident, handleDeleteIncident, displayMessage }) {
+function IncidentSection({ incidents, drones, handleAddIncident, handleUpdateIncident, handleDeleteIncident, displayMessage }) {
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [currentIncident, setCurrentIncident] = useState({ id: null, type: 'alert', message: '', resolved: false });
+    const [currentIncident, setCurrentIncident] = useState({ id: null, type: 'alert', message: '', resolved: false, droneId: '' });
 
     const openAddModal = () => {
         setIsEditing(false);
-        setCurrentIncident({ id: null, type: 'alert', message: '', resolved: false });
+        setCurrentIncident({ id: null, type: '', message: '', resolved: false, droneId: '' });
         setShowModal(true);
     };
 
     const openEditModal = (incident) => {
         setIsEditing(true);
-        setCurrentIncident(incident);
+        setCurrentIncident({ ...incident, droneId: incident.droneId || '' });
         setShowModal(true);
     };
 
@@ -1634,10 +1722,16 @@ function IncidentSection({ incidents, handleAddIncident, handleUpdateIncident, h
             return;
         }
         let success = false;
+        const dataToSave = {
+            type: currentIncident.type,
+            message: currentIncident.message,
+            resolved: currentIncident.resolved,
+            droneId: currentIncident.droneId
+        };
         if (isEditing) {
-            success = await handleUpdateIncident(currentIncident.id, currentIncident);
+            success = await handleUpdateIncident(currentIncident.id, dataToSave);
         } else {
-            success = await handleAddIncident(currentIncident);
+            success = await handleAddIncident(dataToSave);
         }
         if (success) {
             setShowModal(false);
@@ -1663,12 +1757,30 @@ function IncidentSection({ incidents, handleAddIncident, handleUpdateIncident, h
                         <h3 className="text-xl font-bold mb-4">{isEditing ? 'Edit Incident' : 'Report New Incident'}</h3>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Incident Type</label>
-                                <select value={currentIncident.type} onChange={e => setCurrentIncident({ ...currentIncident, type: e.target.value })} className="w-full p-2 border rounded mt-1">
-                                    <option value="alert">Alert</option>
-                                    <option value="warning">Warning</option>
-                                    <option value="info">Info</option>
+                                <label className="block text-sm font-medium text-gray-700">Associated Drone</label>
+                                <select
+                                    value={currentIncident.droneId}
+                                    onChange={e => setCurrentIncident({ ...currentIncident, droneId: e.target.value })}
+                                    className="w-full p-2 border rounded mt-1"
+                                >
+                                    <option value="">None</option>
+                                    {drones.map(drone => (
+                                        <option key={drone.id} value={drone.id}>
+                                            {drone.name} ({drone.uniqueld})
+                                        </option>
+                                    ))}
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Incident Type</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., Alert, Warning, Info"
+                                    value={currentIncident.type}
+                                    onChange={e => setCurrentIncident({ ...currentIncident, type: e.target.value })}
+                                    className="w-full p-2 border rounded mt-1"
+                                    required
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Message</label>
@@ -1721,6 +1833,7 @@ const ProfileSettings = ({ user, setUser, displayMessage, handleUpdateUserProfil
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
     const [profilePictureUrlInput, setProfilePictureUrlInput] = useState(user.profilePicture || '');
+    const [profilePictureFile, setProfilePictureFile] = useState(null);
 
     // Sync local state with prop changes (e.g., after successful update from backend)
     useEffect(() => {
@@ -1746,176 +1859,225 @@ const ProfileSettings = ({ user, setUser, displayMessage, handleUpdateUserProfil
         setConfirmNewPassword('');
     };
 
-    const onSubmitUpdateProfilePicture = async (e) => {
-        e.preventDefault();
-        await handleUpdateProfilePicture(profilePictureUrlInput);
-    };
+   // In ProfileSettings component
+const onSubmitUpdateProfilePicture = async (e) => {
+    e.preventDefault();
+    if (profilePictureFile) {
+        // Handle file upload
+        const formData = new FormData();
+        formData.append('file', profilePictureFile);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/upload_profile_picture`, {
+                method: 'POST',
+                headers: {
+                    'X-Auth-Token': authToken
+                },
+                body: formData
+            });
+            const data = await response.json();
+            if (response.ok) {
+                await handleUpdateUserProfile({ profilePicture: data.url });
+                displayMessage('Profile picture uploaded and updated!', 'success');
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            displayMessage(`Failed to upload picture: ${error.message}`, 'error');
+        }
+    } else {
+        // Fallback for URL input
+        await handleUpdateUserProfile({ profilePicture: profilePictureUrlInput });
+    }
+};
+    // In ProfileSettings component
+const handleFileChange = (e) => {
+    setProfilePictureFile(e.target.files[0]);
+    // Optionally, create a preview URL for immediate feedback
+    const file = e.target.files[0];
+    if (file) {
+        setProfilePictureUrlInput(URL.createObjectURL(file));
+    }
+};
 
-    return (
-        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col items-center">
-            <h2 className="text-3xl font-bold text-gray-800 mb-8">User Profile Settings</h2>
+   
+   return (
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col items-center">
+        <h2 className="text-3xl font-bold text-gray-800 mb-8">User Profile Settings</h2>
 
-            {/* Profile Header and Picture */}
-            <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl flex flex-col items-center">
-                <div className="relative mb-4">
-                    <img
-                        src={user.profilePicture}
-                        alt="Profile"
-                        className="w-32 h-32 rounded-full object-cover border-4 border-blue-400 shadow-lg"
-                        onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/150x150/cccccc/333333?text=User'; }}
-                    />
-                    <button
-                        onClick={() => { /* Trigger modal or input for new image URL */ }}
-                        className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 shadow-md hover:bg-blue-700 transition-colors"
-                        title="Change Profile Picture"
-                    >
-                        <Edit className="w-5 h-5" />
-                    </button>
-                </div>
-                <h3 className="text-2xl font-semibold text-gray-800">{user.name}</h3>
-                <p className="text-gray-600">{user.email}</p>
+        {/* Profile Header and Picture */}
+        <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl flex flex-col items-center">
+            <div className="relative mb-4">
+                <img
+                    src={user.profilePicture}
+                    alt="Profile"
+                    className="w-32 h-32 rounded-full object-cover border-4 border-blue-400 shadow-lg"
+                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/150x150/cccccc/333333?text=User'; }}
+                />
+                <button
+                    onClick={() => { /* Trigger modal or input for new image URL */ }}
+                    className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 shadow-md hover:bg-blue-700 transition-colors"
+                    title="Change Profile Picture"
+                >
+                    <Edit className="w-5 h-5" />
+                </button>
+            </div>
+            <h3 className="text-2xl font-semibold text-gray-800">{user.name}</h3>
+            <p className="text-gray-600">{user.email}</p>
 
-                {/* Profile Picture Update Form */}
-                <form onSubmit={onSubmitUpdateProfilePicture} className="mt-6 w-full flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
+            {/* Profile Picture Update Form */}
+            <form onSubmit={onSubmitUpdateProfilePicture} className="mt-6 w-full flex flex-col space-y-3">
+                <div className="flex items-center space-x-2">
                     <input
                         type="url"
                         placeholder="New Profile Picture URL"
                         value={profilePictureUrlInput}
-                        onChange={(e) => setProfilePictureUrlInput(e.target.value)}
+                        onChange={(e) => { setProfilePictureUrlInput(e.target.value); setProfilePictureFile(null); }}
                         className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-200"
                     />
+                    <span className="text-gray-500">OR</span>
+                    <label className="flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-md shadow-sm cursor-pointer hover:bg-gray-300">
+                        <Upload className="w-4 h-4 mr-2" /> Upload
+                        <input type="file" onChange={handleFileChange} className="hidden" accept="image/*" />
+                    </label>
+                </div>
+                {profilePictureFile && (
+                    <div className="text-sm text-gray-600">Selected file: {profilePictureFile.name}</div>
+                )}
+                {profilePictureUrlInput && <img src={profilePictureUrlInput} alt="Preview" className="mt-4 max-w-full h-auto rounded-md shadow-md" />}
+                <div className="flex justify-end">
                     <button
                         type="submit"
                         className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
                     >
                         <Upload className="w-5 h-5 inline-block mr-2" /> Update Picture
                     </button>
-                </form>
-            </div>
+                </div>
+            </form>
+        </div>
 
-            {/* Account Information Section */}
-            <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
-                <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Account Information</h3>
-                <form onSubmit={onSubmitUpdateProfile} className="space-y-6">
-                    <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                        <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                            <UserCircle className="w-5 h-5 text-gray-400 ml-3" />
-                            <input
-                                type="text"
-                                id="name"
-                                value={newName}
-                                onChange={(e) => setNewName(e.target.value)}
-                                className="flex-1 p-3 bg-transparent outline-none"
-                                required
-                            />
-                        </div>
+        {/* Account Information Section */}
+        <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
+            <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Account Information</h3>
+            <form onSubmit={onSubmitUpdateProfile} className="space-y-6">
+                <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+                        <UserCircle className="w-5 h-5 text-gray-400 ml-3" />
+                        <input
+                            type="text"
+                            id="name"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            className="flex-1 p-3 bg-transparent outline-none"
+                            required
+                        />
                     </div>
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                        <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                            <Mail className="w-5 h-5 text-gray-400 ml-3" />
-                            <input
-                                type="email"
-                                id="email"
-                                value={newEmail}
-                                onChange={(e) => setNewEmail(e.target.value)}
-                                className="flex-1 p-3 bg-transparent outline-none"
-                                required
-                            />
-                        </div>
+                </div>
+                <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+                        <Mail className="w-5 h-5 text-gray-400 ml-3" />
+                        <input
+                            type="email"
+                            id="email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            className="flex-1 p-3 bg-transparent outline-none"
+                            required
+                        />
                     </div>
-                    <div className="flex justify-end">
-                        <button
-                            type="submit"
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
-                        >
-                            Save Profile Changes
-                        </button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                <div className="flex justify-end">
+                    <button
+                        type="submit"
+                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+                    >
+                        Save Profile Changes
+                    </button>
+                </div>
+            </form>
+        </div>
 
-            {/* Change Password Section */}
-            <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
-                <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Change Password</h3>
-                <form onSubmit={onSubmitChangePassword} className="space-y-6">
-                    <div>
-                        <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                        <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                            <Key className="w-5 h-5 text-gray-400 ml-3" />
-                            <input
-                                type="password"
-                                id="currentPassword"
-                                value={currentPassword}
-                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                className="flex-1 p-3 bg-transparent outline-none"
-                                required
-                            />
-                        </div>
+        {/* Change Password Section */}
+        <div className="bg-white rounded-xl shadow-md p-8 mb-8 w-full max-w-2xl">
+            <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Change Password</h3>
+            <form onSubmit={onSubmitChangePassword} className="space-y-6">
+                <div>
+                    <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+                        <Key className="w-5 h-5 text-gray-400 ml-3" />
+                        <input
+                            type="password"
+                            id="currentPassword"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            className="flex-1 p-3 bg-transparent outline-none"
+                            required
+                        />
                     </div>
-                    <div>
-                        <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                        <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                            <Key className="w-5 h-5 text-gray-400 ml-3" />
-                            <input
-                                type="password"
-                                id="newPassword"
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="flex-1 p-3 bg-transparent outline-none"
-                                required
-                            />
-                        </div>
+                </div>
+                <div>
+                    <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+                        <Key className="w-5 h-5 text-gray-400 ml-3" />
+                        <input
+                            type="password"
+                            id="newPassword"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="flex-1 p-3 bg-transparent outline-none"
+                            required
+                        />
                     </div>
-                    <div>
-                        <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                        <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                            <Key className="w-5 h-5 text-gray-400 ml-3" />
-                            <input
-                                type="password"
-                                id="confirmNewPassword"
-                                value={confirmNewPassword}
-                                onChange={(e) => setConfirmNewPassword(e.target.value)}
-                                className="flex-1 p-3 bg-transparent outline-none"
-                                required
-                            />
-                        </div>
+                </div>
+                <div>
+                    <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                    <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
+                        <Key className="w-5 h-5 text-gray-400 ml-3" />
+                        <input
+                            type="password"
+                            id="confirmNewPassword"
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            className="flex-1 p-3 bg-transparent outline-none"
+                            required
+                        />
                     </div>
-                    <div className="flex justify-end">
-                        <button
-                            type="submit"
-                            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
-                        >
-                            Change Password
-                        </button>
-                    </div>
-                </form>
-            </div>
+                </div>
+                <div className="flex justify-end">
+                    <button
+                        type="submit"
+                        className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition duration-300 ease-in-out transform hover:-translate-y-1 shadow-md"
+                    >
+                        Change Password
+                    </button>
+                </div>
+            </form>
+        </div>
 
-            {/* Flight Statistics Section */}
-            <div className="bg-white rounded-xl shadow-md p-8 w-full max-w-2xl">
-                <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Flight Statistics</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                    <div className="flex flex-col items-center p-4 bg-blue-50 rounded-lg shadow-sm">
-                        <Activity className="w-10 h-10 text-blue-600 mb-3" />
-                        <p className="text-sm text-gray-600">Total Flights</p>
-                        <p className="text-3xl font-bold text-blue-800">{user.totalFlights}</p>
-                    </div>
-                    <div className="flex flex-col items-center p-4 bg-indigo-50 rounded-lg shadow-sm">
-                        <Clock className="w-10 h-10 text-indigo-600 mb-3" />
-                        <p className="text-sm text-gray-600">Total Flight Time</p>
-                        <p className="text-3xl font-bold text-indigo-800">{user.totalFlightTime}</p>
-                    </div>
-                    <div className="flex flex-col items-center p-4 bg-purple-50 rounded-lg shadow-sm">
-                        <Rocket className="w-10 h-10 text-purple-600 mb-3" />
-                        <p className="text-sm text-gray-600">Avg. Flight Time</p>
-                        <p className="text-3xl font-bold text-purple-800">{user.averageFlightTime}</p>
-                    </div>
+        {/* Flight Statistics Section */}
+        <div className="bg-white rounded-xl shadow-md p-8 w-full max-w-2xl">
+            <h3 className="text-2xl font-semibold text-gray-800 mb-6 border-b pb-3">Flight Statistics</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                <div className="flex flex-col items-center p-4 bg-blue-50 rounded-lg shadow-sm">
+                    <Activity className="w-10 h-10 text-blue-600 mb-3" />
+                    <p className="text-sm text-gray-600">Total Flights</p>
+                    <p className="text-3xl font-bold text-blue-800">{user.totalFlights}</p>
+                </div>
+                <div className="flex flex-col items-center p-4 bg-indigo-50 rounded-lg shadow-sm">
+                    <Clock className="w-10 h-10 text-indigo-600 mb-3" />
+                    <p className="text-sm text-gray-600">Total Flight Time</p>
+                    <p className="text-3xl font-bold text-indigo-800">{user.totalFlightTime}</p>
+                </div>
+                <div className="flex flex-col items-center p-4 bg-purple-50 rounded-lg shadow-sm">
+                    <Rocket className="w-10 h-10 text-purple-600 mb-3" />
+                    <p className="text-sm text-gray-600">Avg. Flight Time</p>
+                    <p className="text-3xl font-bold text-purple-800">{user.averageFlightTime}</p>
                 </div>
             </div>
         </div>
-    );
+    </div>
+);
 };
 
 const NotificationsPage = ({ notifications, setNotifications, displayMessage }) => {
@@ -2064,10 +2226,10 @@ const NotificationsPage = ({ notifications, setNotifications, displayMessage }) 
     );
 };
 
-function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMessage }) {
+function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMessage, drones }) {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newPart, setNewPart] = useState({
-        name: '', status: 'Available', lastMaintenance: '', nextMaintenance: ''
+        name: '', status: 'Available', lastMaintenance: '', nextMaintenance: '', droneId: ''
     });
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingPart, setEditingPart] = useState(null);
@@ -2084,15 +2246,17 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                 last_maintenance: newPart.lastMaintenance || null,
                 next_maintenance: newPart.nextMaintenance || null,
                 status: newPart.status,
+                drone_id: newPart.droneId
             });
             setMaintenanceParts(prev => [...prev, {
                 ...response,
                 lastMaintenance: response.lastMaintenance,
                 nextMaintenance: response.nextMaintenance,
+                droneName: drones.find(d => d.id === response.droneId)?.name || 'N/A'
             }]);
             displayMessage("Maintenance part added successfully!", 'success');
             setShowAddModal(false);
-            setNewPart({ name: '', status: 'Available', lastMaintenance: '', nextMaintenance: '' });
+            setNewPart({ name: '', status: 'Available', lastMaintenance: '', nextMaintenance: '', droneId: '' });
         } catch (error) {
             displayMessage(`Failed to add part: ${error.message}`, 'error');
         }
@@ -2109,11 +2273,13 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                 last_maintenance: editingPart.lastMaintenance || null,
                 next_maintenance: editingPart.nextMaintenance || null,
                 status: editingPart.status,
+                drone_id: editingPart.droneId
             });
             setMaintenanceParts(prev => prev.map(p => (p.id === editingPart.id ? {
                 ...response,
                 lastMaintenance: response.lastMaintenance,
                 nextMaintenance: response.nextMaintenance,
+                droneName: drones.find(d => d.id === response.droneId)?.name || 'N/A'
             } : p)));
             displayMessage("Maintenance part updated successfully!", 'success');
             setShowEditModal(false);
@@ -2122,7 +2288,6 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
             displayMessage(`Failed to update part: ${error.message}`, 'error');
         }
     };
-
 
     const handleDeletePart = async (id) => {
         if (window.confirm("Are you sure you want to delete this maintenance part?")) {
@@ -2172,6 +2337,20 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                                     onChange={(e) => setNewPart({ ...newPart, name: e.target.value })}
                                     className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
                                 />
+                            </div>
+                            <div>
+                                <label htmlFor="partDrone" className="block text-sm font-medium text-gray-700">Associated Drone</label>
+                                <select
+                                    id="partDrone"
+                                    value={newPart.droneId}
+                                    onChange={e => setNewPart({ ...newPart, droneId: e.target.value })}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                                >
+                                    <option value="">None</option>
+                                    {drones.map(drone => (
+                                        <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueld})</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label htmlFor="partStatus" className="block text-sm font-medium text-gray-700">Status</label>
@@ -2241,6 +2420,20 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                                 />
                             </div>
                             <div>
+                                <label htmlFor="editPartDrone" className="block text-sm font-medium text-gray-700">Associated Drone</label>
+                                <select
+                                    id="editPartDrone"
+                                    value={editingPart?.droneId || ''}
+                                    onChange={e => setEditingPart({ ...editingPart, droneId: e.target.value })}
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                                >
+                                    <option value="">None</option>
+                                    {drones.map(drone => (
+                                        <option key={drone.id} value={drone.id}>{drone.name} ({drone.uniqueld})</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
                                 <label htmlFor="editPartStatus" className="block text-sm font-medium text-gray-700">Status</label>
                                 <select
                                     id="editPartStatus"
@@ -2307,7 +2500,9 @@ function MaintenanceSection({ maintenanceParts, setMaintenanceParts, displayMess
                                     {part.status}
                                 </span>
                             </div>
-                            <p className="text-gray-600 text-sm mb-4 flex-grow">ID: {part.id}</p>
+                            <p className="text-gray-600 text-sm mb-4 flex-grow">
+                                {part.droneId ? `Associated Drone: ${drones.find(d => d.id === part.droneId)?.name || 'N/A'}` : 'Not Associated'}
+                            </p>
 
                             <div className="space-y-2 text-sm text-gray-700 mb-4">
                                 <p className="flex items-center"><Clock className="w-4 h-4 mr-2 text-indigo-500" /> Last Service: <span className="font-medium ml-1">{part.lastMaintenance ? new Date(part.lastMaintenance).toLocaleDateString() : 'N/A'}</span></p>
@@ -2559,10 +2754,15 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
                 <div className="lg:col-span-1 flex flex-col space-y-6">
                     <div className="bg-white rounded-xl shadow-md p-4 flex-1">
                         <h3 className="text-lg font-semibold mb-2">Interactive Map</h3>
-                        <div className="bg-gray-200 h-full rounded-md flex items-center justify-center">
-                            <p className="text-xs text-gray-500 mt-2">Lat:
-                                {currentTelemetry.latitude?.toFixed(4) || 'N/A'}, Lng: {currentTelemetry.longitude?.toFixed(4) || 'N/A'}</p>
-                        </div>
+                        <div className="bg-gray-200 h-full rounded-md relative group flex items-center justify-center">
+    <img src="https://placehold.co/800x600/b0e0e6/000000?text=Map+of+Oman" alt="Interactive Map of Oman" className="w-full h-full object-cover rounded-md" />
+    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div className="text-white text-center p-4">
+            <h4 className="text-lg font-bold">Coming Soon</h4>
+            <p className="text-sm">Under maintenance.</p>
+        </div>
+    </div>
+</div>
                     </div>
                     <div className="bg-white rounded-xl shadow-md p-4">
                         <h3 className="text-lg font-semibold mb-4">Detailed Telemetry</h3>
@@ -2610,9 +2810,44 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
         </div>
     );
 };
+// Mission Form for Add/Edit
 
-const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMission, displayMessage, onAssignDrone = () => {} }) => {
-    const [showAddModal, setShowAddModal] = useState(false);
+
+// Simple Mission Detail View
+const MissionDetailView = ({ mission, onBack, drones }) => {
+    if (!mission) return <div className="text-center text-gray-500">Mission not found.</div>;
+
+    const assignedDrones = mission.droneIds.map(id => drones.find(d => d.id === id));
+    
+    return (
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800">{mission.name} Details</h2>
+                <button onClick={onBack} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                    Back to List
+                </button>
+            </div>
+            <div className="bg-white rounded-xl shadow-md p-6 flex-1">
+                <p><strong>Status:</strong> {mission.status}</p>
+                <p><strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}</p>
+                <p><strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}</p>
+                <p><strong>Details:</strong> {mission.details}</p>
+                <h4 className="font-bold mt-4">Assigned Drones:</h4>
+                <ul>
+                    {assignedDrones.length > 0 ? (
+                        assignedDrones.map(drone => (
+                            <li key={drone.id}>{drone?.name || `ID: ${drone.id}`}</li>
+                        ))
+                    ) : (
+                        <li>No drones assigned.</li>
+                    )}
+                </ul>
+            </div>
+        </div>
+    );
+};
+const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission, handleDeleteMission, displayMessage }) => {
+const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
         name: '',
         drone_id: '',
@@ -2627,7 +2862,56 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedMissionForAssignment, setSelectedMissionForAssignment] = useState(null);
     const [selectedDroneForAssignment, setSelectedDroneForAssignment] = useState('');
+    const [currentView, setCurrentView] = useState('list');
+const [selectedMission, setSelectedMission] = useState(null);
+const [confirmingDeleteMission, setConfirmingDeleteMission] = useState(null);
 
+const handleCreateMission = () => setCurrentView('create');
+
+const handleEditMission = (id) => {
+    setSelectedMission(missions.find(m => m.id === id));
+    setCurrentView('edit');
+};
+
+const handleViewMissionDetails = (id) => {
+    setSelectedMission(missions.find(m => m.id === id));
+    setCurrentView('details');
+};
+
+const handleSaveMission = async (updatedMissionData) => {
+    let success = false;
+    if (currentView === 'create') {
+        success = await handleAddMission(updatedMissionData);
+    } else if (currentView === 'edit') {
+        success = await handleUpdateMission(updatedMissionData.id, updatedMissionData);
+    }
+    if (success) {
+        setCurrentView('list');
+        setSelectedMission(null);
+    }
+};
+
+const handleBackToMissionList = () => {
+    setCurrentView('list');
+    setSelectedMission(null);
+};
+
+const handleDeleteMissionConfirm = (id) => {
+    setConfirmingDeleteMission(id);
+};
+
+const handleConfirmDeleteMission = async () => {
+    const success = await handleDeleteMission(confirmingDeleteMission);
+    if (success) {
+        setConfirmingDeleteMission(null);
+        setSelectedMission(null);
+        setCurrentView('list');
+    }
+};
+
+const handleCancelDeleteMission = () => {
+    setConfirmingDeleteMission(null);
+};
     const onSave = async () => {
         if (!newMission.name || !newMission.drone_id || !newMission.start_time || !newMission.end_time) {
             displayMessage("Please fill all required mission fields.", 'error');
@@ -2680,128 +2964,169 @@ const Missions = ({ missions = [], drones = [], handleAddMission, handleDeleteMi
     };
 
     return (
-        <div className="p-6 bg-gray-50 rounded-xl shadow-lg">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
-                <button onClick={() => setShowAddModal(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                    <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
-                </button>
-            </div>
-
-            {/* Status Filter Buttons */}
-            <div className="flex space-x-2 mb-6 bg-white p-2 rounded-lg shadow-sm w-min">
-                <button
-                    onClick={() => setStatusFilter('all')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                >
-                    All
-                </button>
-                <button
-                    onClick={() => setStatusFilter('Active')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Active' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                >
-                    Active
-                </button>
-                <button
-                    onClick={() => setStatusFilter('Scheduled')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Scheduled' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                >
-                    Scheduled
-                </button>
-                 <button
-                    onClick={() => setStatusFilter('Completed')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Completed' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                >
-                    Completed
-                </button>
-            </div>
-
-            {showAddModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-                        <h3 className="text-xl font-bold mb-4">Create New Mission</h3>
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Mission Name" value={newMission.name} onChange={e => setNewMission({ ...newMission, name: e.target.value })} className="w-full p-2 border rounded" />
-                            <select value={newMission.drone_id} onChange={e => setNewMission({ ...newMission, drone_id: e.target.value })} className="w-full p-2 border rounded">
-                                <option value="">Select a Drone</option>
-                                {drones.map(d => <option key={d.id} value={d.id}>{d.name} ({d.uniqueld})</option>)}
-                            </select>
-                            <div>
-                                <label className="text-sm">Mission Status</label>
-                                <select value={newMission.status} onChange={e => setNewMission({ ...newMission, status: e.target.value })} className="w-full p-2 border rounded">
-                                    <option value="Scheduled">Scheduled</option>
-                                    <option value="Active">Active</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-sm">Start Time</label>
-                                <input type="datetime-local" value={newMission.start_time} onChange={e => setNewMission({ ...newMission, start_time: e.target.value })} className="w-full p-2 border rounded" />
-                            </div>
-                            <div>
-                                <label className="text-sm">End Time</label>
-                                <input type="datetime-local" value={newMission.end_time} onChange={e => setNewMission({ ...newMission, end_time: e.target.value })} className="w-full p-2 border rounded" />
-                            </div>
-                            <textarea placeholder="Details" value={newMission.details} onChange={e => setNewMission({ ...newMission, details: e.target.value })} className="w-full p-2 border rounded h-24"></textarea>
-                        </div>
-                        <div className="flex justify-end gap-4 mt-6">
-                            <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
-                            <button onClick={onSave} className="px-4 py-2 bg-blue-600 text-white rounded">Create Mission</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredMissions.map(mission => (
-                    <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="text-lg font-semibold">{mission.name}</h3>
-                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>{mission.status}</span>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
-                        <div className="text-sm space-y-2">
-                            <p><strong>Drone:</strong> {drones.find(d => d.id === mission.drone_id)?.name || mission.drone_id}</p>
-                            <p><strong>Start:</strong> {mission.start_time ? new Date(mission.start_time).toLocaleString() : 'N/A'}</p>
-                            <p><strong>End:</strong> {mission.end_time ? new Date(mission.end_time).toLocaleString() : 'N/A'}</p>
-                            <p><strong>Progress:</strong> {mission.progress}%</p>
-                        </div>
-                        <div className="flex justify-end mt-4">
-                            <button onClick={() => handleDeleteMission(mission.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-full"><Trash2 className="w-5 h-5"/></button>
-                            {/* New button to assign a drone */}
-                            <button onClick={() => openAssignModal(mission)} className="px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm hover:bg-green-200">
-                                <PlusCircle className="w-4 h-4 mr-2" /> Assign Drone
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* New Assign Drone Modal */}
-            {showAssignModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-                        <h3 className="text-xl font-bold mb-4">Assign Drone to {selectedMissionForAssignment?.name}</h3>
-                        <div className="space-y-4">
-                            <label className="block text-sm font-medium text-gray-700">Select an Available Drone:</label>
-                            <select
-                                value={selectedDroneForAssignment}
-                                onChange={e => setSelectedDroneForAssignment(e.target.value)}
-                                className="w-full p-2 border rounded"
-                            >
-                                <option value="">-- Choose Drone --</option>
-                                {drones.filter(d => !d.missionId).map(d => (
-                                    <option key={d.id} value={d.id}>{d.name} ({d.uniqueld})</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex justify-end gap-4 mt-6">
-                            <button onClick={() => setShowAssignModal(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
-                            <button onClick={handleConfirmAssign} disabled={!selectedDroneForAssignment} className="px-4 py-2 bg-blue-600 text-white rounded disabled:bg-gray-400">Assign</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+  <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+    {currentView === 'list' && (
+      <>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-3xl font-bold text-gray-800">Missions Management</h2>
+          <button onClick={handleCreateMission} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            <PlusCircle className="w-5 h-5 mr-2" /> Create New Mission
+          </button>
         </div>
+        {/* Status Filter Buttons */}
+        <div className="flex space-x-2 mb-6 bg-white p-2 rounded-lg shadow-sm w-min">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setStatusFilter('Active')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Active' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Active
+          </button>
+          <button
+            onClick={() => setStatusFilter('Scheduled')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Scheduled' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Scheduled
+          </button>
+          <button
+            onClick={() => setStatusFilter('Completed')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${statusFilter === 'Completed' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            Completed
+          </button>
+        </div>
+
+        {/* ... The grid of mission cards will go here (from step 1) ... */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredMissions.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8 col-span-full">
+              <p className="text-gray-500 text-lg">No missions found matching your criteria.</p>
+            </div>
+          ) : (
+            filteredMissions.map(mission => (
+              <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
+                <div className="flex justify-between items-start mb-2">
+                  <Link to={`/missions/${mission.id}`} className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors">
+                    {mission.name}
+                  </Link>
+                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>
+                    {mission.status}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
+                <div className="text-sm space-y-2">
+                  <p>
+                    <strong>Drones:</strong>
+                    {mission.droneIds && mission.droneIds.length > 0
+                      ? mission.droneIds.map(droneId => (
+                          <span key={droneId} className="ml-1">
+                            {drones.find(d => d.id === droneId)?.name || `ID: ${droneId}`}
+                          </span>
+                        ))
+                      : 'Unassigned'}
+                  </p>
+                  <p>
+                    <strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}
+                  </p>
+                  <p>
+                    <strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}
+                  </p>
+                  <p>
+                    <strong>Progress:</strong> {mission.progress || 0}%
+                  </p>
+                </div>
+                <div className="flex justify-end space-x-2 mt-4">
+                  <button onClick={() => handleViewMissionDetails(mission.id)} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm hover:bg-blue-200">
+                    View
+                  </button>
+                  <button onClick={() => handleEditMission(mission.id)} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-md text-sm hover:bg-yellow-200">
+                    Edit
+                  </button>
+                  <button onClick={() => handleDeleteMissionConfirm(mission.id)} className="px-3 py-1 bg-red-100 text-red-800 rounded-md text-sm hover:bg-red-200">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </>
+    )}
+
+    {/* Form for creating/editing missions */}
+    {(currentView === 'create' || currentView === 'edit') && (
+      <MissionForm
+        title={currentView === 'create' ? "Create New Mission" : "Edit Mission"}
+        onSave={handleSaveMission}
+        onCancel={handleBackToMissionList}
+        initialData={selectedMission}
+        drones={drones}
+      />
+    )}
+
+    {/* ... The mission detail view is not fully implemented in the provided code, but here is a simple placeholder ... */}
+    {currentView === 'details' && selectedMission && (
+      <MissionDetailView
+        mission={selectedMission}
+        onBack={handleBackToMissionList}
+        drones={drones}
+      />
+    )}
+
+    {/* Confirmation Modal */}
+    {confirmingDeleteMission && (
+      <ConfirmationModal
+        message={`Are you sure you want to delete mission "${missions.find(m => m.id === confirmingDeleteMission)?.name}"? This action cannot be undone.`}
+        onConfirm={handleConfirmDeleteMission}
+        onCancel={handleCancelDeleteMission}
+      />
+    )}
+  </div>
+);
+};
+const MissionDetailWrapper = ({ missions, displayMessage, drones }) => {
+    const { id } = useParams();
+    const [selectedMission, setSelectedMission] = useState(null);
+
+    useEffect(() => {
+        const mission = missions.find(m => m.id === id);
+        if (mission) {
+            // Create a dummy checklist object from the mission data
+            const missionChecklist = {
+                id: mission.id,
+                name: mission.name,
+                description: mission.details || 'No description provided.',
+                items: [ // This is the key change: an array for the checklist items
+                    { id: '1', text: `Drone: ${drones.find(d => d.id === mission.drone_id)?.name || 'N/A'}` },
+                    { id: '2', text: `Status: ${mission.status}` },
+                    { id: '3', text: `Start Time: ${new Date(mission.start_time).toLocaleString()}` },
+                    { id: '4', text: `End Time: ${new Date(mission.end_time).toLocaleString()}` },
+                    { id: '5', text: `Progress: ${mission.progress}%` }
+                ],
+                type: 'mission-details' // A new type to differentiate
+            };
+            setSelectedMission(missionChecklist);
+        } else {
+            setSelectedMission(null);
+            displayMessage("Mission not found.", "error");
+        }
+    }, [id, missions, displayMessage]);
+
+    const handleBack = () => {
+        window.history.back();
+    };
+
+    if (!selectedMission) {
+        return <div className="p-6 text-center text-gray-500">Mission not found.</div>;
+    }
+
+    return (
+        <ChecklistDetailView checklist={selectedMission} onBack={handleBack} onComplete={() => {}} />
     );
 };
 // --- 5. ASSET-SPECIFIC COMPONENTS (Drones, Ground Stations, Equipment, Batteries) ---
@@ -2934,7 +3259,8 @@ const Drones = ({ drones, missions = [], handleAddDrone, handleUpdateDrone, hand
                             return (
                                 <tr key={drone.id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.uniqueld}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.name}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">    <Link to={`/assets/drones/${drone.id}`} className="text-blue-600 hover:text-blue-900">{drone.name}</Link>
+</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{mission?.name || 'Unassigned'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(drone.status)}`}>
@@ -2971,7 +3297,78 @@ const Drones = ({ drones, missions = [], handleAddDrone, handleUpdateDrone, hand
         </div>
     );
 };
+const DroneDetailWrapper = ({ drones, missions, handleUpdateDrone, handleDeleteDrone, handleUpdateDroneStatus, displayMessage }) => {
+    const { id } = useParams();
+    const [selectedDrone, setSelectedDrone] = useState(null);
+    const [confirmingDeleteDrone, setConfirmingDeleteDrone] = useState(null);
 
+    useEffect(() => {
+        // Find the drone from the list based on the ID from the URL
+        const drone = drones.find(d => d.id === id);
+        if (drone) {
+            setSelectedDrone(drone);
+        } else {
+            setSelectedDrone(null);
+            displayMessage("Drone not found.", "error");
+        }
+    }, [id, drones, displayMessage]);
+    
+    // Handlers for edit and delete actions
+    const handleEditDroneClick = () => {
+        // Logic to navigate to an edit form for this drone
+        // You might need a new component or state to handle this
+        console.log('Edit drone clicked for', selectedDrone.name);
+    };
+
+    const handleDeleteDroneClick = () => {
+        setConfirmingDeleteDrone(selectedDrone.id);
+    };
+
+    const handleConfirmDeleteDrone = async () => {
+        const success = await handleDeleteDrone(confirmingDeleteDrone);
+        if (success) {
+            setConfirmingDeleteDrone(null);
+            window.history.back(); // Go back after deletion
+        }
+    };
+
+    const handleCancelDeleteDrone = () => {
+        setConfirmingDeleteDrone(null);
+    };
+    
+    const handleViewMaintenanceHistory = () => {
+        // Logic to show maintenance history
+        console.log('View maintenance history clicked for', selectedDrone.name);
+    };
+
+    const handleBack = () => {
+        window.history.back();
+    };
+
+    if (!selectedDrone) {
+        return <div className="p-6 text-center text-gray-500">Drone not found.</div>;
+    }
+
+    return (
+        <>
+            <AssetDetails
+                asset={selectedDrone}
+                onBack={handleBack}
+                onEdit={handleEditDroneClick}
+                onDelete={handleDeleteDroneClick}
+                onViewMaintenanceHistory={handleViewMaintenanceHistory}
+                assetTypeIcon={Drone}
+            />
+            {confirmingDeleteDrone && (
+                <ConfirmationModal
+                    message={`Are you sure you want to delete drone "${selectedDrone?.name}"? This action cannot be undone.`}
+                    onConfirm={handleConfirmDeleteDrone}
+                    onCancel={handleCancelDeleteDrone}
+                />
+            )}
+        </>
+    );
+};
 
 const GroundStations = ({ groundStations, handleAddGS, handleUpdateGS, handleDeleteGS, displayMessage }) => {
     const [currentView, setCurrentView] = useState('list');
@@ -3265,7 +3662,7 @@ const Sidebar = ({ onLogout, userRole }) => {
         <div className="w-64 bg-gray-800 text-white flex flex-col h-screen shadow-lg">
             <div className="p-6 flex items-center justify-center border-b border-gray-700">
                 <img src="https://placehold.co/40x40/ffffff/000000?text=AV" alt="AirVibe Logo" className="h-10 w-10 mr-3 rounded-full" />
-                <span className="text-2xl font-bold text-blue-400">AirVibe</span>
+                <span className="text-2xl font-bold text-blue-400">Firnas Air</span>
             </div>
 
             <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
@@ -3493,22 +3890,30 @@ const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts, 
                                 <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {drones.map(drone => (
-                                <tr key={drone.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.name}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{drone.missionName || 'Unassigned'}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button
-                                            onClick={() => onStreamSelect(drone)}
-                                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                                        >
-                                            <Play className="h-4 w-4 mr-2" /> Start Live Stream
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
+                      <tbody className="bg-white divide-y divide-gray-200">
+    {drones.map(drone => (
+        <tr key={drone.id}>
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <Link to={`/assets/drones/${drone.id}`} className="text-blue-600 hover:text-blue-900">{drone.name}</Link>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                {drone.missionName ? (
+                    <Link to={`/missions/${drone.missionId}`} className="text-blue-600 hover:text-blue-900">{drone.missionName}</Link>
+                ) : (
+                    'Unassigned'
+                )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button
+                    onClick={() => onStreamSelect(drone)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+                >
+                    <Play className="h-4 w-4 mr-2" /> Start Live Stream
+                </button>
+            </td>
+        </tr>
+    ))}
+</tbody>
                     </table>
                 </div>
             </div>
@@ -4185,7 +4590,21 @@ const App = () => {
     const handleAddMission = (data) => handleAddItem('/api/missions', data, setMissions, 'Mission');
     const handleUpdateMission = (id, data) => handleUpdateItem('/api/missions', id, data, setMissions, 'Mission');
     const handleDeleteMission = (id) => handleDeleteItem('/api/missions', id, setMissions, 'mission');
-
+    const handleAssignMissionToDrone = async (missionId, droneId) => {
+        try {
+            const updatedDrone = await authenticatedApiRequest(
+                `/api/missions/${missionId}/assign`,
+                'POST',
+                { drone_id: droneId }
+            );
+            // Update the drones state
+            setDrones(prev => prev.map(d => d.id === droneId ? updatedDrone : d));
+            displayMessage('Drone successfully assigned to mission.', 'success');
+        } catch (error) {
+            displayMessage(`Failed to assign drone to mission: ${error.message}`, 'error');
+        }
+    };
+    
     // Media
     const handleAddMedia = (data) => handleAddItem('/api/media', data, setMediaItems, 'Media Item');
     const handleUpdateMedia = (id, data) => handleUpdateItem('/api/media', id, data, setMediaItems, 'Media Item');
@@ -4287,22 +4706,6 @@ const App = () => {
         }
     };
     
-    const handleAssignMissionToDrone = async (missionId, droneId) => {
-        try {
-            const updatedDrone = await authenticatedApiRequest(
-                `/api/missions/${missionId}/assign`,
-                'POST',
-                { drone_id: droneId }
-            );
-            // Update the drones state
-            setDrones(prev => prev.map(d => d.id === droneId ? updatedDrone : d));
-            displayMessage('Drone successfully assigned to mission.', 'success');
-        } catch (error) {
-            displayMessage(`Failed to assign drone to mission: ${error.message}`, 'error');
-        }
-    };
-
-
     // New handler to select a drone for streaming
     const handleStreamSelect = async (drone) => {
         try {
@@ -4364,18 +4767,16 @@ const App = () => {
                                 />} />
                                 
                                 {/* Missions Route - Correctly passing the new prop */}
-                                <Route path="/missions" element={<Missions
-                                    missions={missions} drones={drones} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
-                                    onAssignDrone={handleAssignMissionToDrone}
-                                    displayMessage={displayMessage}
-                                />} />
-
+                                <Route path="/missions" element={<Missions missions={missions} handleAddMission={handleAddMission} handleUpdateMission={handleUpdateMission} handleDeleteMission={handleDeleteMission} displayMessage={displayMessage} drones={drones} />} />
+                                <Route path="/missions/:id" element={<MissionDetailWrapper missions={missions} displayMessage={displayMessage} drones={drones} />} />
+                                
                                 {/* Assets */}
                                 <Route path="/assets/drones" element={<Drones
                                     drones={drones} missions={missions} handleAddDrone={handleAddDrone} handleUpdateDrone={handleUpdateDrone}
                                     handleDeleteDrone={handleDeleteDrone} handleUpdateDroneStatus={handleUpdateDroneStatus}
                                     displayMessage={displayMessage}
                                 />} />
+                                <Route path="/assets/drones/:id" element={<DroneDetailWrapper drones={drones} missions={missions} displayMessage={displayMessage} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone} handleUpdateDroneStatus={handleUpdateDroneStatus} />} />
                                 <Route path="/assets/ground-stations" element={<GroundStations
                                     groundStations={groundStations} handleAddGS={handleAddGroundStation} handleUpdateGS={handleUpdateGroundStation}
                                     handleDeleteGS={handleDeleteGroundStation} displayMessage={displayMessage}
@@ -4408,11 +4809,15 @@ const App = () => {
                                 />} />
 
                                 {/* Manage */}
-                                <Route path="/manage/incidents" element={<IncidentSection
-                                    incidents={incidents} handleAddIncident={handleAddIncident}
-                                    handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
-                                    displayMessage={displayMessage}
-                                />} />
+                                // In App.js
+<Route path="/manage/incidents" element={<IncidentSection
+    incidents={incidents}
+    handleAddIncident={handleAddIncident}
+    handleUpdateIncident={handleUpdateIncident}
+    handleDeleteIncident={handleDeleteIncident}
+    displayMessage={displayMessage}
+    drones={drones} // Pass the drones state
+/>} />
                                 <Route path="/manage/maintenance" element={<MaintenanceSection
                                     maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} displayMessage={displayMessage}
                                 />} />
@@ -4434,7 +4839,7 @@ const App = () => {
                                         groundStations={groundStations} handleAddGroundStation={handleAddGroundStation} handleUpdateGroundStation={handleUpdateGroundStation} handleDeleteGroundStation={handleDeleteGroundStation}
                                         equipment={equipment} handleAddEquipment={handleAddEquipment} handleUpdateEquipment={handleUpdateEquipment} handleDeleteEquipment={handleDeleteEquipment}
                                         batteries={batteries} handleAddBattery={handleAddBattery} handleUpdateBattery={handleUpdateBattery} handleDeleteBattery={handleDeleteBattery}
-                                        missions={missions} handleAddMission={handleAddMission} handleDeleteMission={handleDeleteMission}
+                                        missions={missions} handleAddMission={handleAddMission} handleUpdateMission={handleUpdateMission} handleDeleteMission={handleDeleteMission}
                                         mediaItems={mediaItems} setMediaItems={setMediaItems} handleAddMedia={handleAddMedia} handleUpdateMedia={handleUpdateMedia} handleDeleteMedia={handleDeleteMedia}
                                         files={files} setFiles={setFiles} handleAddFile={handleAddFile} handleDeleteFile={handleDeleteFile}
                                         checklists={checklists} setChecklists={setChecklists} handleAddChecklist={handleAddChecklist} handleUpdateChecklist={handleUpdateChecklist} handleDeleteChecklist={handleDeleteChecklist}
