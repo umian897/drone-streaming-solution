@@ -1,9 +1,6 @@
-
-// import ReactPlayer from 'react-player';
 import Hls from 'hls.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-import { Routes, Route, Link, useLocation, useNavigate,useParams } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
     LayoutDashboard, Video, Rocket, Package, Drone, HardDrive, BatteryCharging,
     Book, FileText, CheckSquare, Tag, Settings, AlertCircle, Wrench, Bell, UserCircle,
@@ -11,16 +8,14 @@ import {
     Gauge, Battery, Signal, Compass, Camera, Video as VideoIcon, Home, ListChecks, Search,
     Upload, Info, Factory, BatteryMedium, Plus, Edit, Eye, History, XCircle, Download, Mail, Key, Check, Calendar,
     List, Folder,
-    Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square, User // Added User icon for Admin Panel
+    Rewind, Pause, Play, FastForward, Volume2, MinusCircle, Square, User as UserIcon // Aliased 'User' as 'UserIcon'
 } from 'lucide-react';
 import { io } from 'socket.io-client';
-
-// Make sure AuthPage.js is located at src/pages/auth/AuthPage.js
 import AuthPage from './pages/auth/AuthPage';
 
 // --- API CONFIG & HELPER ---
-const API_BASE_URL = 'http://localhost:5000'; // Matches app.py.pdf
-const WEBSOCKET_URL = 'http://localhost:5000'; // Matches app.py.pdf
+const API_BASE_URL = 'http://localhost:5000';
+const WEBSOCKET_URL = 'http://localhost:5000'; 
 
 const apiRequest = async (endpoint, method = 'GET', body = null, token = null) => {
     // Check localStorage for the token if not provided as an argument
@@ -601,6 +596,231 @@ const EditMediaForm = ({ onSave, onCancel, initialData }) => {
     );
 };
 
+const PilotForm = ({ title, onSave, onCancel, initialData = null, users, missions, checklists, drones }) => {
+  const [name, setName] = useState(initialData?.name || "");
+  const [userId, setUserId] = useState(initialData?.userId || "");
+  const [missionId, setMissionId] = useState(initialData?.missionId || "");
+  const [checklistId, setChecklistId] = useState(initialData?.checklistId || "");
+  const [droneIds, setDroneIds] = useState(initialData?.droneIds || []);
+
+  const handleDroneSelection = (e) => {
+    const { value, checked } = e.target;
+    setDroneIds(prev =>
+      checked ? [...prev, value] : prev.filter(id => id !== value)
+    );
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!name) {
+      alert("Pilot name is required.");
+      return;
+    }
+    onSave({
+      ...initialData,
+      name,
+      userId,
+      missionId,
+      checklistId,
+      droneIds
+    });
+  };
+
+  return (
+    <div className="p-6 bg-white rounded-xl shadow-md">
+      <h3 className="text-2xl font-bold text-gray-800 mb-4">{title}</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="pilotName" className="block text-sm font-medium text-gray-700">Pilot Name</label>
+          <input type="text" id="pilotName" value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+        </div>
+        <div>
+          <label htmlFor="userSelect" className="block text-sm font-medium text-gray-700">Associated User</label>
+          <select id="userSelect" value={userId} onChange={e => setUserId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+            <option value="">None</option>
+            {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="missionSelect" className="block text-sm font-medium text-gray-700">Assigned Mission</label>
+          <select id="missionSelect" value={missionId} onChange={e => setMissionId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+            <option value="">None</option>
+            {missions.map(mission => <option key={mission.id} value={mission.id}>{mission.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="checklistSelect" className="block text-sm font-medium text-gray-700">Assigned Checklist</label>
+          <select id="checklistSelect" value={checklistId} onChange={e => setChecklistId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+            <option value="">None</option>
+            {checklists.map(checklist => <option key={checklist.id} value={checklist.id}>{checklist.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Assigned Drones</label>
+          {drones.map(drone => (
+            <div key={drone.id} className="flex items-center space-x-2">
+              <input type="checkbox" id={`drone-${drone.id}`} value={drone.id} checked={droneIds.includes(drone.id)} onChange={handleDroneSelection} />
+              <label htmlFor={`drone-${drone.id}`} className="text-sm text-gray-700">{drone.name} ({drone.uniqueId})</label>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end space-x-3 mt-6">
+          <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">{initialData ? 'Save Changes' : 'Create Pilot'}</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const Pilots = ({ pilots, users, missions, checklists, drones, handleAddPilot, handleUpdatePilot, handleDeletePilot, displayMessage }) => {
+  const [currentView, setCurrentView] = useState('list');
+  const [selectedPilot, setSelectedPilot] = useState(null);
+  const [confirmingDeletePilot, setConfirmingDeletePilot] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredPilots = pilots.filter(pilot =>
+    (pilot.name && pilot.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const handleAddPilotClick = () => setCurrentView('add-pilot');
+  const handleEditPilotClick = (id) => {
+    setSelectedPilot(pilots.find(p => p.id === id));
+    setCurrentView('edit-pilot');
+  };
+  const handleViewPilotDetails = (id) => {
+    setSelectedPilot(pilots.find(p => p.id === id));
+    setCurrentView('details');
+  };
+  const handleDeletePilotConfirm = (id) => setConfirmingDeletePilot(id);
+  const handleCancelDeletePilot = () => setConfirmingDeletePilot(null);
+
+  const handleConfirmDeletePilot = async () => {
+    const success = await handleDeletePilot(confirmingDeletePilot);
+    if (success) {
+      setConfirmingDeletePilot(null);
+      setSelectedPilot(null);
+      setCurrentView('list');
+    }
+  };
+
+  const handleSavePilot = async (pilotData) => {
+    let success = false;
+    if (currentView === 'add-pilot') {
+      success = await handleAddPilot(pilotData);
+    } else if (currentView === 'edit-pilot') {
+      success = await handleUpdatePilot(pilotData.id, pilotData);
+    }
+    if (success) {
+      setCurrentView('list');
+      setSelectedPilot(null);
+    }
+  };
+
+  const handleBackToPilotList = () => {
+    setCurrentView('list');
+    setSelectedPilot(null);
+  };
+
+  const PilotDetailsView = ({ pilot, onBack, onEdit, onDelete }) => {
+    if (!pilot) return <div className="text-center text-gray-500">Pilot not found.</div>;
+    const assignedUser = users.find(u => u.id === pilot.userId);
+    const assignedMission = missions.find(m => m.id === pilot.missionId);
+    const assignedChecklist = checklists.find(c => c.id === pilot.checklistId);
+    const assignedDrones = pilot.droneIds.map(dId => drones.find(d => d.id === dId)).filter(d => d);
+
+    return (
+      <div className="p-6 bg-white rounded-xl shadow-md">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-2xl font-bold text-gray-800">{pilot.name} Details</h3>
+          <button onClick={onBack} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Back to Pilots</button>
+        </div>
+        <div className="space-y-4">
+          <p><strong>Name:</strong> {pilot.name}</p>
+          <p><strong>Associated User:</strong> {assignedUser?.name || 'N/A'}</p>
+          <p><strong>Assigned Mission:</strong> {assignedMission?.name || 'N/A'}</p>
+          <p><strong>Assigned Checklist:</strong> {assignedChecklist?.name || 'N/A'}</p>
+          <div>
+            <strong>Assigned Drones:</strong>
+            <ul className="list-disc list-inside">
+              {assignedDrones.length > 0 ? (
+                assignedDrones.map(d => <li key={d.id}>{d.name} ({d.uniqueId})</li>)
+              ) : (
+                <li>None</li>
+              )}
+            </ul>
+          </div>
+        </div>
+        <div className="flex space-x-4 mt-6">
+          <button onClick={onEdit} className="flex items-center px-4 py-2 bg-yellow-500 text-white rounded-md shadow-sm text-sm font-medium hover:bg-yellow-600"><Edit className="w-4 h-4 mr-2" /> Edit</button>
+          <button onClick={onDelete} className="flex items-center px-4 py-2 bg-red-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-red-700"><Trash2 className="w-4 h-4 mr-2" /> Delete</button>
+        </div>
+      </div>
+    );
+  };
+
+  if (currentView === 'add-pilot') {
+    return <PilotForm title="Add New Pilot" onSave={handleSavePilot} onCancel={handleBackToPilotList} users={users} missions={missions} checklists={checklists} drones={drones} />;
+  }
+  if (currentView === 'edit-pilot' && selectedPilot) {
+    return <PilotForm title="Edit Pilot" onSave={handleSavePilot} onCancel={handleBackToPilotList} initialData={selectedPilot} users={users} missions={missions} checklists={checklists} drones={drones} />;
+  }
+  if (currentView === 'details' && selectedPilot) {
+    return <PilotDetailsView pilot={selectedPilot} onBack={handleBackToPilotList} onEdit={() => setCurrentView('edit-pilot')} onDelete={() => handleDeletePilotConfirm(selectedPilot.id)} />;
+  }
+
+  return (
+    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Pilots Management</h2>
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0 sm:space-x-4">
+        <button onClick={handleAddPilotClick} className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors transform hover:-translate-y-1 shadow-md w-full sm:w-auto justify-center">
+          <Plus className="w-5 h-5 mr-2" /> Add New Pilot
+        </button>
+        <input type="text" placeholder="Search pilots..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto" />
+      </div>
+      {filteredPilots.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8">
+          <p className="text-gray-500 text-lg">No pilots found matching your criteria.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-md p-6 flex-1 overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Mission</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Drones</th>
+                <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredPilots.map(pilot => (
+                <tr key={pilot.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{pilot.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pilot.missionName || 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pilot.droneIds?.length > 0 ? pilot.droneIds.join(', ') : 'None'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleViewPilotDetails(pilot.id)} className="text-blue-600 hover:text-blue-900 mr-3">View</button>
+                    <button onClick={() => handleEditPilotClick(pilot.id)} className="text-indigo-600 hover:text-indigo-900 mr-3">Edit</button>
+                    <button onClick={() => handleDeletePilotConfirm(pilot.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {confirmingDeletePilot && (
+        <ConfirmationModal
+          message={`Are you sure you want to delete pilot "${pilots.find(p => p.id === confirmingDeletePilot)?.name}"? This action cannot be undone.`}
+          onConfirm={handleConfirmDeletePilot}
+          onCancel={handleCancelDeletePilot}
+        />
+      )}
+    </div>
+  );
+};
+
 const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelete }) => {
     const [newTagInput, setNewTagInput] = useState('');
     const videoRef = useRef(null);
@@ -718,7 +938,7 @@ const MediaDetailView = ({ media, onBack, onAddTag, onRemoveTag, onEdit, onDelet
 };
 
 
-const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
+const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, pilots = [], handleAddMedia, handleUpdateMedia, handleDeleteMedia, displayMessage }) => {
     const [currentView, setCurrentView] = useState('folders');
     const [selectedMedia, setSelectedMedia] = useState(null);
     const [selectedDroneMedia, setSelectedDroneMedia] = useState([]);
@@ -727,7 +947,91 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
     const [filterType, setFilterType] = useState('all');
     const [confirmingDeleteMedia, setConfirmingDeleteMedia] = useState(null);
 
-    // This function will fetch media for a specific drone
+    const UploadMediaForm = ({ onSave, onCancel, drones, missions, pilots }) => {
+        const [title, setTitle] = useState('');
+        const [type, setType] = useState('image');
+        const [url, setUrl] = useState('');
+        const [droneId, setDroneId] = useState('');
+        const [missionId, setMissionId] = useState('');
+        const [pilotId, setPilotId] = useState(''); // New state for pilot
+        const [description, setDescription] = useState('');
+        const [tags, setTags] = useState('');
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onSave({
+                title,
+                type,
+                url,
+                thumbnail: type === 'video' ? 'https://placehold.co/300x200/cccccc/333333?text=Video+Placeholder' : url,
+                droneId,
+                missionId,
+                pilotId, // Include pilotId in the saved data
+                timestamp: new Date().toISOString(),
+                gps: 'N/A',
+                tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag !== ''),
+                description,
+            });
+        };
+
+        return (
+            <div className="p-6 bg-white rounded-xl shadow-md">
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Upload New Media</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
+                        <input type="text" id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required />
+                    </div>
+                    <div>
+                        <label htmlFor="type" className="block text-sm font-medium text-gray-700">Media Type</label>
+                        <select id="type" value={type} onChange={(e) => setType(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            <option value="image">Image</option>
+                            <option value="video">Video</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="url" className="block text-sm font-medium text-gray-700">Media URL (Placeholder)</label>
+                        <input type="url" id="url" value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., https://example.com/image.jpg or video.mp4" required />
+                        <p className="mt-1 text-xs text-gray-500">In a real app, this would be a file upload field.</p>
+                    </div>
+                    <div>
+                        <label htmlFor="droneId" className="block text-sm font-medium text-gray-700">Drone</label>
+                        <select id="droneId" value={droneId} onChange={(e) => setDroneId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            <option value="">None</option>
+                            {drones.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="missionId" className="block text-sm font-medium text-gray-700">Mission</label>
+                        <select id="missionId" value={missionId} onChange={(e) => setMissionId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            <option value="">None</option>
+                            {missions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="pilotId" className="block text-sm font-medium text-gray-700">Pilot</label>
+                        <select id="pilotId" value={pilotId} onChange={(e) => setPilotId(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            <option value="">None</option>
+                            {pilots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows="3" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                    </div>
+                    <div>
+                        <label htmlFor="tags" className="block text-sm font-medium text-gray-700">Tags (comma-separated)</label>
+                        <input type="text" id="tags" value={tags} onChange={(e) => setTags(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., security, patrol, night" />
+                    </div>
+                    <div className="flex justify-end space-x-3 mt-6">
+                        <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700">Upload Media</button>
+                    </div>
+                </form>
+            </div>
+        );
+    };
+
     const handleViewDroneFolder = async (droneId, droneName) => {
         try {
             const media = await authenticatedApiRequest(`/api/media/by_drone/${droneId}`);
@@ -754,6 +1058,7 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
             description: updatedMedia.description,
             droneId: updatedMedia.droneId,
             missionId: updatedMedia.missionId,
+            pilotId: updatedMedia.pilotId, // Add pilotId here
             gps: updatedMedia.gps,
             tags: updatedMedia.tags
         });
@@ -795,7 +1100,6 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
             setConfirmingDeleteMedia(null);
             setSelectedMedia(null);
             setCurrentView('drone-media-list');
-            // Re-fetch the media list for the selected drone to reflect the change
             if (selectedDroneMedia.length > 0) {
                 handleViewDroneFolder(selectedDroneMedia[0].droneId, selectedDroneName);
             } else {
@@ -817,7 +1121,6 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
         setSelectedMedia(null);
     };
 
-    // Filtering logic for the drone-specific media list
     const filteredDroneMedia = (selectedDroneMedia || []).filter(item => {
         const matchesType = filterType === 'all' || item.type === filterType;
         const matchesSearch =
@@ -829,7 +1132,7 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
     });
 
     if (currentView === 'upload') {
-        return <UploadMediaForm onSave={handleAddMedia} onCancel={handleBackToMediaList} drones={drones} missions={missions} />;
+        return <UploadMediaForm onSave={handleAddMedia} onCancel={handleBackToMediaList} drones={drones} missions={missions} pilots={pilots} />;
     }
     if (currentView === 'edit-media') {
         return <EditMediaForm onSave={handleSaveMedia} onCancel={handleBackToMediaList} initialData={selectedMedia} />;
@@ -856,7 +1159,6 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
         );
     }
     
-    // Main render block with conditional views
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)]">
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Captured Media Library</h2>
@@ -950,6 +1252,7 @@ const Media = ({ mediaItems = [], setMediaItems, drones = [], missions, handleAd
                                     <div className="p-4 flex-grow flex flex-col">
                                         <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
                                         <p className="text-gray-600 text-sm flex-grow mb-2">Mission: {item.missionName}</p>
+                                        <p className="text-gray-600 text-sm flex-grow mb-2">Pilot: {item.pilotName}</p>
                                         <div className="flex justify-between items-center text-xs text-gray-500 mt-auto">
                                             <span>Drone ID: {item.droneId}</span>
                                             <span>{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : 'N/A'}</span>
@@ -2812,10 +3115,12 @@ const LiveOperations = ({ drones, connectedDrones, liveTelemetry, sendDroneComma
 
 
 // Simple Mission Detail View
-const MissionDetailView = ({ mission, onBack, drones }) => {
+
+const MissionDetailView = ({ mission, onBack, drones, pilots }) => {
     if (!mission) return <div className="text-center text-gray-500">Mission not found.</div>;
 
     const assignedDrones = mission.droneIds.map(id => drones.find(d => d.id === id));
+    const assignedPilot = pilots.find(p => p.id === mission.pilotId);
     
     return (
         <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-[calc(100vh-120px)] flex flex-col">
@@ -2827,6 +3132,7 @@ const MissionDetailView = ({ mission, onBack, drones }) => {
             </div>
             <div className="bg-white rounded-xl shadow-md p-6 flex-1">
                 <p><strong>Status:</strong> {mission.status}</p>
+                <p><strong>Pilot:</strong> {assignedPilot?.name || 'Unassigned'}</p>
                 <p><strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}</p>
                 <p><strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}</p>
                 <p><strong>Details:</strong> {mission.details}</p>
@@ -2845,13 +3151,17 @@ const MissionDetailView = ({ mission, onBack, drones }) => {
     );
 };
 // Mission Form for Add/Edit
-const MissionForm = ({ title, onSave, onCancel, initialData = null, drones }) => {
+
+
+
+const MissionForm = ({ title, onSave, onCancel, initialData = null, drones, pilots }) => {
     const [name, setName] = useState(initialData?.name || '');
     const [status, setStatus] = useState(initialData?.status || 'Scheduled');
     const [details, setDetails] = useState(initialData?.details || '');
     const [startTime, setStartTime] = useState(initialData?.startTime ? initialData.startTime.split('T')[0] : '');
     const [endTime, setEndTime] = useState(initialData?.endTime ? initialData.endTime.split('T')[0] : '');
     const [selectedDrones, setSelectedDrones] = useState(initialData?.droneIds || []);
+    const [selectedPilot, setSelectedPilot] = useState(initialData?.pilotId || '');
 
     const handleDroneSelection = (e) => {
         const { value, checked } = e.target;
@@ -2876,7 +3186,8 @@ const MissionForm = ({ title, onSave, onCancel, initialData = null, drones }) =>
             details,
             startTime,
             endTime,
-            droneIds: selectedDrones
+            droneIds: selectedDrones,
+            pilotId: selectedPilot
         };
         onSave(missionToSave);
     };
@@ -2912,6 +3223,13 @@ const MissionForm = ({ title, onSave, onCancel, initialData = null, drones }) =>
                     </div>
                 </div>
                 <div>
+                    <label htmlFor="pilotSelect" className="block text-sm font-medium text-gray-700">Assign Pilot</label>
+                    <select id="pilotSelect" value={selectedPilot} onChange={e => setSelectedPilot(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                        <option value="">None</option>
+                        {pilots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                <div>
                     <label className="block text-sm font-medium text-gray-700">Assign Drones</label>
                     <div className="mt-1 space-y-2">
                         {drones.map(drone => (
@@ -2944,7 +3262,7 @@ const MissionForm = ({ title, onSave, onCancel, initialData = null, drones }) =>
     );
 };
 
-const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission, handleDeleteMission, displayMessage }) => {
+const Missions = ({ missions, drones = [], pilots = [], handleAddMission, handleUpdateMission, handleDeleteMission, displayMessage }) => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [newMission, setNewMission] = useState({
         name: '',
@@ -2956,7 +3274,6 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
     });
     const [statusFilter, setStatusFilter] = useState('all');
 
-    // New state for the assign modal
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedMissionForAssignment, setSelectedMissionForAssignment] = useState(null);
     const [selectedDroneForAssignment, setSelectedDroneForAssignment] = useState('');
@@ -3041,7 +3358,6 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
         }
     };
 
-    // Filter missions based on the selected status
     const filteredMissions = missions.filter(mission => {
         if (statusFilter === 'all') return true;
         return mission.status === statusFilter;
@@ -3054,7 +3370,6 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
 
     const handleConfirmAssign = () => {
         if (selectedMissionForAssignment && selectedDroneForAssignment) {
-            // The onAssignDrone prop is now guaranteed to be a function
             onAssignDrone(selectedMissionForAssignment.id, selectedDroneForAssignment);
             setShowAssignModal(false);
             setSelectedMissionForAssignment(null);
@@ -3100,58 +3415,63 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
                         </button>
                     </div>
 
-                    {/* ... The grid of mission cards will go here (from step 1) ... */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredMissions.length === 0 ? (
                             <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-md p-8 col-span-full">
                                 <p className="text-gray-500 text-lg">No missions found matching your criteria.</p>
                             </div>
                         ) : (
-                            filteredMissions.map(mission => (
-                                <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <Link to={`/missions/${mission.id}`} className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors">
-                                            {mission.name}
-                                        </Link>
-                                        <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>
-                                            {mission.status}
-                                        </span>
+                            filteredMissions.map(mission => {
+                                const assignedPilot = pilots.find(p => p.id === mission.pilotId);
+                                return (
+                                    <div key={mission.id} className="bg-white rounded-xl shadow-md p-6">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <Link to={`/missions/${mission.id}`} className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors">
+                                                {mission.name}
+                                            </Link>
+                                            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(mission.status)}`}>
+                                                {mission.status}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
+                                        <div className="text-sm space-y-2">
+                                            <p>
+                                                <strong>Drones:</strong>
+                                                {mission.droneIds && mission.droneIds.length > 0
+                                                    ? mission.droneIds.map(droneId => (
+                                                        <span key={droneId} className="ml-1">
+                                                            {drones.find(d => d.id === droneId)?.name || `ID: ${droneId}`}
+                                                        </span>
+                                                    ))
+                                                    : 'Unassigned'}
+                                            </p>
+                                            <p>
+                                                <strong>Pilot:</strong> {assignedPilot?.name || 'Unassigned'}
+                                            </p>
+                                            <p>
+                                                <strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}
+                                            </p>
+                                            <p>
+                                                <strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}
+                                            </p>
+                                            <p>
+                                                <strong>Progress:</strong> {mission.progress || 0}%
+                                            </p>
+                                        </div>
+                                        <div className="flex justify-end space-x-2 mt-4">
+                                            <button onClick={() => handleViewMissionDetails(mission.id)} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm hover:bg-blue-200">
+                                                View
+                                            </button>
+                                            <button onClick={() => handleEditMission(mission.id)} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-md text-sm hover:bg-yellow-200">
+                                                Edit
+                                            </button>
+                                            <button onClick={() => handleDeleteMissionConfirm(mission.id)} className="px-3 py-1 bg-red-100 text-red-800 rounded-md text-sm hover:bg-red-200">
+                                                Delete
+                                            </button>
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-gray-500 mb-4">{mission.details}</p>
-                                    <div className="text-sm space-y-2">
-                                        <p>
-                                            <strong>Drones:</strong>
-                                            {mission.droneIds && mission.droneIds.length > 0
-                                                ? mission.droneIds.map(droneId => (
-                                                    <span key={droneId} className="ml-1">
-                                                        {drones.find(d => d.id === droneId)?.name || `ID: ${droneId}`}
-                                                    </span>
-                                                ))
-                                                : 'Unassigned'}
-                                        </p>
-                                        <p>
-                                            <strong>Start:</strong> {mission.startTime ? new Date(mission.startTime).toLocaleString() : 'N/A'}
-                                        </p>
-                                        <p>
-                                            <strong>End:</strong> {mission.endTime ? new Date(mission.endTime).toLocaleString() : 'N/A'}
-                                        </p>
-                                        <p>
-                                            <strong>Progress:</strong> {mission.progress || 0}%
-                                        </p>
-                                    </div>
-                                    <div className="flex justify-end space-x-2 mt-4">
-                                        <button onClick={() => handleViewMissionDetails(mission.id)} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm hover:bg-blue-200">
-                                            View
-                                        </button>
-                                        <button onClick={() => handleEditMission(mission.id)} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-md text-sm hover:bg-yellow-200">
-                                            Edit
-                                        </button>
-                                        <button onClick={() => handleDeleteMissionConfirm(mission.id)} className="px-3 py-1 bg-red-100 text-red-800 rounded-md text-sm hover:bg-red-200">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </>
@@ -3165,15 +3485,17 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
                     onCancel={handleBackToMissionList}
                     initialData={selectedMission}
                     drones={drones}
+                    pilots={pilots}
                 />
             )}
 
-            {/* ... The mission detail view is not fully implemented in the provided code, but here is a simple placeholder ... */}
+            {/* Mission Detail View - passing pilots prop */}
             {currentView === 'details' && selectedMission && (
                 <MissionDetailView
                     mission={selectedMission}
                     onBack={handleBackToMissionList}
                     drones={drones}
+                    pilots={pilots}
                 />
             )}
 
@@ -3188,6 +3510,8 @@ const Missions = ({ missions, drones = [], handleAddMission, handleUpdateMission
         </div>
     );
 };
+
+
 const MissionDetailWrapper = ({ missions, displayMessage, drones }) => {
     const { id } = useParams();
     const [selectedMission, setSelectedMission] = useState(null);
@@ -3785,7 +4109,7 @@ const Sidebar = ({ onLogout, userRole }) => {
                     {openDropdown === 'operations' && (
                         <div className="pl-6 pt-2 space-y-1">
                             <Link to="/live-operations" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/live-operations') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
-                                <VideoIcon className="w-4 h-4 mr-3" /> Live Operations
+                                <Video className="w-4 h-4 mr-3" /> Live Operations
                             </Link>
                             <Link to="/missions" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/missions') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
                                 <Rocket className="w-4 h-4 mr-3" /> Missions
@@ -3798,7 +4122,7 @@ const Sidebar = ({ onLogout, userRole }) => {
                 <div className="relative">
                     <button
                         onClick={() => toggleDropdown('assets')}
-                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets/drones', '/assets/ground-stations', '/assets/equipment', '/assets/batteries']) ?
+                        className={`flex items-center justify-between w-full p-3 rounded-md text-sm font-medium transition duration-150 ${isDropdownActive(['/assets/drones', '/assets/pilots', '/assets/ground-stations', '/assets/equipment', '/assets/batteries']) ?
                             'bg-blue-600 text-white shadow-md' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
                     >
                         <span className="flex items-center">
@@ -3812,11 +4136,14 @@ const Sidebar = ({ onLogout, userRole }) => {
                             <Link to="/assets/drones" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/drones') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
                                 <Drone className="w-4 h-4 mr-3" /> Drones
                             </Link>
+                            <Link to="/assets/pilots" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/pilots') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
+                                <UserIcon className="w-4 h-4 mr-3" /> Pilots
+                            </Link>
                             <Link to="/assets/ground-stations" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/ground-stations') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
-                                <Factory className="w-4 h-4 mr-3" /> Ground Stations
+                                <HardDrive className="w-4 h-4 mr-3" /> Ground Stations
                             </Link>
                             <Link to="/assets/equipment" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/equipment') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
-                                <HardDrive className="w-4 h-4 mr-3" /> Equipment
+                                <Wrench className="w-4 h-4 mr-3" /> Equipment
                             </Link>
                             <Link to="/assets/batteries" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/assets/batteries') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
                                 <BatteryMedium className="w-4 h-4 mr-3" /> Batteries
@@ -3841,7 +4168,7 @@ const Sidebar = ({ onLogout, userRole }) => {
                     {openDropdown === 'library' && (
                         <div className="pl-6 pt-2 space-y-1">
                             <Link to="/library/media" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/media') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
-                                <ImageIcon className="w-4 h-4 mr-3" /> Media
+                                <Video className="w-4 h-4 mr-3" /> Media
                             </Link>
                             <Link to="/library/files" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/library/files') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
                                 <FileText className="w-4 h-4 mr-3" /> Files
@@ -3880,9 +4207,9 @@ const Sidebar = ({ onLogout, userRole }) => {
                             <Link to="/manage/maintenance" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/manage/maintenance') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
                                 <Wrench className="w-4 h-4 mr-3" /> Maintenance
                             </Link>
-                            {userRole === 'admin' && ( // Admin panel link only for admins
+                            {userRole === 'admin' && (
                                 <Link to="/admin-panel" className={`flex items-center p-2 rounded-md text-sm font-medium transition duration-150 ${isActive('/admin-panel') ? 'bg-blue-500 text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'}`}>
-                                    <User className="w-4 h-4 mr-3" /> User Admin
+                                    <UserIcon className="w-4 h-4 mr-3" /> User Admin
                                 </Link>
                             )}
                         </div>
@@ -3910,120 +4237,107 @@ const Sidebar = ({ onLogout, userRole }) => {
 
 
 
-const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts, onStreamSelect }) => {
+const Dashboard = ({ drones, missions, incidents, mediaItems, maintenanceParts, pilots, onStreamSelect }) => {
     const navigate = useNavigate();
-
     const totalDrones = drones.length;
     const activeMissions = missions.filter(m => m.status === 'Active').length;
     const pendingMaintenance = maintenanceParts.filter(p => p.status !== 'Available').length;
     const recentIncidents = incidents.filter(i => !i.resolved).length;
-
     const mediaToday = (mediaItems || []).filter(m => {
         if (!m.date) return false;
         const today = new Date();
         const mediaDate = new Date(m.date);
-        return mediaDate.getDate() === today.getDate() &&
-            mediaDate.getMonth() === today.getMonth() &&
-            mediaDate.getFullYear() === today.getFullYear();
+        return mediaDate.getDate() === today.getDate() && mediaDate.getMonth() === today.getMonth() && mediaDate.getFullYear() === today.getFullYear();
     }).length;
-
     const totalFlightHours = drones.reduce((sum, drone) => sum + (drone.flightHours || 0), 0).toFixed(1);
 
+    const handleStartStream = (drone) => {
+        onStreamSelect(drone);
+    };
+
     return (
-    <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
-        <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Card becomes a clickable link */}
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/assets/drones')}>
-                <Drone className="w-12 h-12 text-blue-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Total Drones</p>
-                    <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
+        <div className="p-6 bg-gray-50 rounded-xl shadow-lg min-h-screen">
+            <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/assets/drones')}>
+                    <Drone className="w-12 h-12 text-blue-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Total Drones</p>
+                        <p className="text-3xl font-bold text-gray-900">{totalDrones}</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/missions')}>
+                    <Video className="w-12 h-12 text-green-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Active Missions</p>
+                        <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/maintenance')}>
+                    <Wrench className="w-12 h-12 text-yellow-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Pending Maintenance</p>
+                        <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/incidents')}>
+                    <AlertCircle className="w-12 h-12 text-red-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Recent Incidents</p>
+                        <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/library/media')}>
+                    <ImageIcon className="w-12 h-12 text-purple-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Media Captured (Today)</p>
+                        <p className="text-3xl font-bold text-gray-900">{mediaToday}</p>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
+                    <Clock className="w-12 h-12 text-indigo-500" />
+                    <div>
+                        <p className="text-gray-500 text-sm">Total Flight Hours</p>
+                        <p className="text-3xl font-bold text-gray-900">{totalFlightHours}h</p>
+                    </div>
                 </div>
             </div>
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/missions')}>
-                <Rocket className="w-12 h-12 text-green-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Active Missions</p>
-                    <p className="text-3xl font-bold text-gray-900">{activeMissions}</p>
-                </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/maintenance')}>
-                <Wrench className="w-12 h-12 text-yellow-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Pending Maintenance</p>
-                    <p className="text-3xl font-bold text-gray-900">{pendingMaintenance}</p>
-                </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/manage/incidents')}>
-                <AlertCircle className="w-12 h-12 text-red-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Recent Incidents</p>
-                    <p className="text-3xl font-bold text-gray-900">{recentIncidents}</p>
-                </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => navigate('/library/media')}>
-                <ImageIcon className="w-12 h-12 text-purple-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Media Captured (Today)</p>
-                    <p className="text-3xl font-bold text-gray-900">{mediaToday}</p>
-                </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-md p-6 flex items-center space-x-4">
-                <Clock className="w-12 h-12 text-indigo-500" />
-                <div>
-                    <p className="text-gray-500 text-sm">Total Flight Hours</p>
-                    <p className="text-3xl font-bold text-gray-900">{totalFlightHours}h</p>
+
+            <div className="bg-white rounded-xl shadow-md p-6">
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Select a Drone to Stream</h3>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pilot Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {drones.map(drone => {
+                                const assignedMission = missions.find(m => m.droneIds && m.droneIds.includes(drone.id));
+                                const assignedPilot = pilots.find(p => p.droneIds && p.droneIds.includes(drone.id));
+                                return (
+                                    <tr key={drone.id}>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{drone.name}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{assignedMission?.name || 'Unassigned'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{assignedPilot?.name || 'Unassigned'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button onClick={() => handleStartStream(drone)} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                                <Play className="h-4 w-4 mr-2" /> Start Live Stream
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-
-        <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">Select a Drone to Stream</h3>
-            <div className="bg-white rounded-xl shadow-md p-6 overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drone Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mission Name</th>
-                            <th className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {drones.map(drone => {
-                            // Find the mission associated with the current drone
-                            const assignedMission = missions.find(m => m.droneIds && m.droneIds.includes(drone.id));
-                            const missionName = assignedMission ? assignedMission.name : 'Unassigned';
-
-                            return (
-                                <tr key={drone.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        <Link to={`/assets/drones/${drone.id}`} className="text-blue-600 hover:text-blue-900">{drone.name}</Link>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                        {assignedMission ? (
-                                            <Link to={`/missions/${assignedMission.id}`} className="text-blue-600 hover:text-blue-900">{missionName}</Link>
-                                        ) : (
-                                            'Unassigned'
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button
-                                            onClick={() => onStreamSelect(drone)}
-                                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                                        >
-                                            <Play className="h-4 w-4 mr-2" /> Start Live Stream
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-);
+    );
 };
 
 
@@ -4431,6 +4745,7 @@ const App = () => {
     // Centralized Data State
     const [drones, setDrones] = useState([]);
     const [users, setUsers] = useState([]);
+    const [pilots, setPilots] = useState([]);
     const [groundStations, setGroundStations] = useState([]);
     const [equipment, setEquipment] = useState([]);
     const [batteries, setBatteries] = useState([]);
@@ -4457,7 +4772,6 @@ const App = () => {
         setTimeout(() => setMessage(''), 4000);
     }, []);
 
-    // Override the default apiRequest to use the token from App.js state
     const authenticatedApiRequest = useCallback(async (endpoint, method = 'GET', body = null) => {
         return apiRequest(endpoint, method, body, authToken);
     }, [authToken]);
@@ -4466,58 +4780,60 @@ const App = () => {
     useEffect(() => {
         if (!isAuthenticated || !authToken) return;
 
-       const fetchAllInitialData = async () => {
-    try {
-        const apiCalls = [
-            authenticatedApiRequest('/api/drones'),
-            authenticatedApiRequest('/api/missions'),
-            authenticatedApiRequest('/api/media'),
-            authenticatedApiRequest('/api/incidents'),
-            authenticatedApiRequest('/api/maintenance_parts'),
-            authenticatedApiRequest('/api/notifications'),
-            authenticatedApiRequest('/api/connected_drones'),
-            authenticatedApiRequest('/api/ground_stations'),
-            authenticatedApiRequest('/api/equipment'),
-            authenticatedApiRequest('/api/batteries'),
-            authenticatedApiRequest('/api/files'),
-            authenticatedApiRequest('/api/checklists'),
-            authenticatedApiRequest('/api/tags'),
-            authenticatedApiRequest('/api/user/profile'),
-        ];
+        const fetchAllInitialData = async () => {
+            try {
+                const apiCalls = [
+                    authenticatedApiRequest('/api/drones'),
+                    authenticatedApiRequest('/api/missions'),
+                    authenticatedApiRequest('/api/media'),
+                    authenticatedApiRequest('/api/incidents'),
+                    authenticatedApiRequest('/api/maintenance_parts'),
+                    authenticatedApiRequest('/api/notifications'),
+                    authenticatedApiRequest('/api/connected_drones'),
+                    authenticatedApiRequest('/api/ground_stations'),
+                    authenticatedApiRequest('/api/equipment'),
+                    authenticatedApiRequest('/api/batteries'),
+                    authenticatedApiRequest('/api/files'),
+                    authenticatedApiRequest('/api/checklists'),
+                    authenticatedApiRequest('/api/tags'),
+                    authenticatedApiRequest('/api/user/profile'),
+                    authenticatedApiRequest('/api/pilots'),
+                ];
 
-        if (userRole === 'admin') {
-            apiCalls.push(authenticatedApiRequest('/api/admin/users'));
-        }
+                if (userRole === 'admin') {
+                    apiCalls.push(authenticatedApiRequest('/api/admin/users'));
+                }
 
-        const responses = await Promise.all(apiCalls);
+                const responses = await Promise.all(apiCalls);
 
-        setDrones(responses[0]);
-        setMissions(responses[1]);
-        setMediaItems(responses[2]);
-        setIncidents(responses[3]);
-        setMaintenanceParts(responses[4]);
-        setNotifications(responses[5]);
-        setConnectedDrones(responses[6]);
-        setGroundStations(responses[7]);
-        setEquipment(responses[8]);
-        setBatteries(responses[9]);
-        setFiles(responses[10]);
-        setChecklists(responses[11]);
-        setTags(responses[12]);
-        setUserProfile(responses[13]);
+                setDrones(responses[0]);
+                setMissions(responses[1]);
+                setMediaItems(responses[2]);
+                setIncidents(responses[3]);
+                setMaintenanceParts(responses[4]);
+                setNotifications(responses[5]);
+                setConnectedDrones(responses[6]);
+                setGroundStations(responses[7]);
+                setEquipment(responses[8]);
+                setBatteries(responses[9]);
+                setFiles(responses[10]);
+                setChecklists(responses[11]);
+                setTags(responses[12]);
+                setUserProfile(responses[13]);
+                setPilots(responses[14]);
 
-        if (userRole === 'admin') {
-            setUsers(responses[14]);
-        }
+                if (userRole === 'admin') {
+                    setUsers(responses[15]);
+                }
 
-    } catch (error) {
-        console.error("Error fetching initial data:", error);
-        displayMessage(`Failed to load system data: ${error.message}`, 'error');
-        if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
-            handleLogout();
-        }
-    }
-};
+            } catch (error) {
+                console.error("Error fetching initial data:", error);
+                displayMessage(`Failed to load system data: ${error.message}`, 'error');
+                if (error.message.includes('Authentication required') || error.message.includes('Admin access required')) {
+                    handleLogout();
+                }
+            }
+        };
 
         fetchAllInitialData();
 
@@ -4676,6 +4992,11 @@ const App = () => {
     const handleUpdateDrone = (id, data) => handleUpdateItem('/api/drones', id, data, setDrones, 'Drone');
     const handleDeleteDrone = (id) => handleDeleteItem('/api/drones', id, setDrones, 'drone');
 
+    // Pilots
+    const handleAddPilot = (data) => handleAddItem('/api/pilots', data, setPilots, 'Pilot');
+    const handleUpdatePilot = (id, data) => handleUpdateItem('/api/pilots', id, data, setPilots, 'Pilot');
+    const handleDeletePilot = (id) => handleDeleteItem('/api/pilots', id, setPilots, 'pilot');
+
     // Ground Stations
     const handleAddGroundStation = (data) => handleAddItem('/api/ground_stations', data, setGroundStations, 'Ground Station');
     const handleUpdateGroundStation = (id, data) => handleUpdateItem('/api/ground_stations', id, data, setGroundStations, 'Ground Station');
@@ -4702,7 +5023,6 @@ const App = () => {
                 'POST',
                 { drone_id: droneId }
             );
-            // Update the drones state
             setDrones(prev => prev.map(d => d.id === droneId ? updatedDrone : d));
             displayMessage('Drone successfully assigned to mission.', 'success');
         } catch (error) {
@@ -4801,7 +5121,6 @@ const App = () => {
 
     const handleUpdateDroneStatus = async (droneId, newStatus) => {
         try {
-            // The API call will trigger the backend to broadcast the update
             await authenticatedApiRequest(`/api/drones/${droneId}/status`, 'POST', { status: newStatus });
             displayMessage(`Drone ${droneId} status set to ${newStatus}.`, 'success');
             return true;
@@ -4861,6 +5180,7 @@ const App = () => {
                                             incidents={incidents}
                                             mediaItems={mediaItems}
                                             maintenanceParts={maintenanceParts}
+                                            pilots={pilots}
                                             onStreamSelect={handleStreamSelect}
                                         />
                                     )
@@ -4882,6 +5202,11 @@ const App = () => {
                                     displayMessage={displayMessage}
                                 />} />
                                 <Route path="/assets/drones/:id" element={<DroneDetailWrapper drones={drones} missions={missions} displayMessage={displayMessage} handleUpdateDrone={handleUpdateDrone} handleDeleteDrone={handleDeleteDrone} handleUpdateDroneStatus={handleUpdateDroneStatus} />} />
+                                <Route path="/assets/pilots" element={<Pilots
+                                    pilots={pilots} users={users} missions={missions} checklists={checklists} drones={drones}
+                                    handleAddPilot={handleAddPilot} handleUpdatePilot={handleUpdatePilot} handleDeletePilot={handleDeletePilot}
+                                    displayMessage={displayMessage}
+                                />} />
                                 <Route path="/assets/ground-stations" element={<GroundStations
                                     groundStations={groundStations} handleAddGS={handleAddGroundStation} handleUpdateGS={handleUpdateGroundStation}
                                     handleDeleteGS={handleDeleteGroundStation} displayMessage={displayMessage}
@@ -4896,16 +5221,16 @@ const App = () => {
                                 />} />
 
                                 {/* Library */}
-                                // In App.js
-<Route path="/library/media" element={<Media
-    mediaItems={mediaItems}
-    setMediaItems={setMediaItems}
-    handleAddMedia={handleAddMedia}
-    handleUpdateMedia={handleUpdateMedia}
-    handleDeleteMedia={handleDeleteMedia}
-    displayMessage={displayMessage}
-    drones={drones} // Pass the drones state here
-/>} />
+                                <Route path="/library/media" element={<Media
+                                    mediaItems={mediaItems}
+                                    setMediaItems={setMediaItems}
+                                    handleAddMedia={handleAddMedia}
+                                    handleUpdateMedia={handleUpdateMedia}
+                                    handleDeleteMedia={handleDeleteMedia}
+                                    displayMessage={displayMessage}
+                                    drones={drones}
+                                    pilots={pilots}
+                                />} />
                                 <Route path="/library/files" element={<Files
                                     files={files} setFiles={setFiles} handleAddFile={handleAddFile}
                                     handleUpdateFile={handleUpdateFile} handleDeleteFile={handleDeleteFile} displayMessage={displayMessage}
@@ -4920,22 +5245,21 @@ const App = () => {
                                 />} />
 
                                 {/* Manage */}
-                                // In App.js
-<Route path="/manage/incidents" element={<IncidentSection
-    incidents={incidents}
-    handleAddIncident={handleAddIncident}
-    handleUpdateIncident={handleUpdateIncident}
-    handleDeleteIncident={handleDeleteIncident}
-    displayMessage={displayMessage}
-    drones={drones} // Pass the drones state
-/>} />
+                                <Route path="/manage/incidents" element={<IncidentSection
+                                    incidents={incidents}
+                                    handleAddIncident={handleAddIncident}
+                                    handleUpdateIncident={handleUpdateIncident}
+                                    handleDeleteIncident={handleDeleteIncident}
+                                    displayMessage={displayMessage}
+                                    drones={drones}
+                                />} />
                                 
-<Route path="/manage/maintenance" element={<MaintenanceSection
-    maintenanceParts={maintenanceParts}
-    setMaintenanceParts={setMaintenanceParts}
-    displayMessage={displayMessage}
-    drones={drones} // This prop must be passed correctly
-/>} />
+                                <Route path="/manage/maintenance" element={<MaintenanceSection
+                                    maintenanceParts={maintenanceParts}
+                                    setMaintenanceParts={setMaintenanceParts}
+                                    displayMessage={displayMessage}
+                                    drones={drones}
+                                />} />
                                 <Route path="/manage/profile-settings" element={<ProfileSettings
                                     user={userProfile} setUser={setUserProfile} displayMessage={displayMessage}
                                     handleUpdateUserProfile={handleUpdateUserProfile} handleChangePassword={handleChangePassword}
@@ -4961,11 +5285,12 @@ const App = () => {
                                         tags={tags} setTags={setTags} handleAddTag={handleAddTag} handleUpdateTag={handleUpdateTag} handleDeleteTag={handleDeleteTag}
                                         incidents={incidents} handleAddIncident={handleAddIncident} handleUpdateIncident={handleUpdateIncident} handleDeleteIncident={handleDeleteIncident}
                                         maintenanceParts={maintenanceParts} setMaintenanceParts={setMaintenanceParts} handleAddMaintenancePart={handleAddMaintenancePart} handleUpdateMaintenancePart={handleUpdateMaintenancePart} handleDeleteMaintenancePart={handleDeleteMaintenancePart}
+                                        pilots={pilots} handleAddPilot={handleAddPilot} handleUpdatePilot={handleUpdatePilot} handleDeletePilot={handleDeletePilot}
                                     />}
                                 />
                                 )}
 
-                                <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} />} />
+                                <Route path="*" element={<Dashboard drones={drones} incidents={incidents} mediaItems={mediaItems} missions={missions} maintenanceParts={maintenanceParts} pilots={pilots} />} />
                             </Routes>
                         </main>
                     </div>

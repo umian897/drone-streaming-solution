@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import atexit
 import sys
+import click
 
 # --- App Initialization ---
 app = Flask(__name__)
@@ -69,6 +70,30 @@ class User(db.Model):
             "role": self.role
         }
 
+class Pilot(db.Model):
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(120), nullable=False)
+    user_id = db.Column(db.String(36), db.ForeignKey('user.id'), nullable=True)
+    mission_id = db.Column(db.String(36), db.ForeignKey('mission.id'), nullable=True)
+    checklist_id = db.Column(db.String(36), db.ForeignKey('checklist.id'), nullable=True)
+    drone_ids = db.Column(JSON)
+
+    user = db.relationship('User', backref=db.backref('pilots', lazy=True))
+    mission = db.relationship('Mission', backref=db.backref('pilots', lazy=True))
+    checklist = db.relationship('Checklist', backref=db.backref('pilots', lazy=True))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "userId": self.user_id,
+            "missionId": self.mission_id,
+            "checklistId": self.checklist_id,
+            "droneIds": self.drone_ids,
+            "missionName": self.mission.name if self.mission else None,
+            "checklistName": self.checklist.name if self.checklist else None
+        }
+
 class Drone(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(120), nullable=False)
@@ -83,7 +108,10 @@ class Drone(db.Model):
     type = db.Column(db.String(50), default="Drone")
     maintenanceHistory = db.Column(JSON)
     mission_id = db.Column(db.String(36), db.ForeignKey('mission.id'), nullable=True)
+    pilot_id = db.Column(db.String(36), db.ForeignKey('pilot.id'), nullable=True)
+
     mission = db.relationship('Mission', backref=db.backref('drones', lazy=True), foreign_keys=[mission_id])
+    pilot = db.relationship('Pilot', backref=db.backref('drones_assigned', lazy=True))
     def to_dict(self):
         return {
             "id": self.id,
@@ -99,7 +127,9 @@ class Drone(db.Model):
             "type": self.type,
             "maintenanceHistory": self.maintenanceHistory,
             "missionId": self.mission_id,
-            "missionName": self.mission.name if self.mission else None
+            "missionName": self.mission.name if self.mission else None,
+            "pilotId": self.pilot_id,
+            "pilotName": self.pilot.name if self.pilot else None
         }
 
 class GroundStation(db.Model):
@@ -201,6 +231,7 @@ class Media(db.Model):
     thumbnail = db.Column(db.String(255))
     droneId = db.Column(db.String(36))
     missionId = db.Column(db.String(36))
+    pilotId = db.Column(db.String(36))
     timestamp = db.Column(db.DateTime)
     gps = db.Column(db.String(100))
     tags = db.Column(JSON)
@@ -210,7 +241,7 @@ class Media(db.Model):
         return {
             "id": self.id, "title": self.title, "type": self.type, "url": self.url,
             "thumbnail": self.thumbnail, "droneId": self.droneId, "missionId":
-            self.missionId,
+            self.missionId, "pilotId": self.pilotId,
             "timestamp": self.timestamp.isoformat() + 'Z' if self.timestamp else None,
             "gps": self.gps, "tags": self.tags, "description": self.description,
             "date": self.date.isoformat() if self.date else None
@@ -310,7 +341,7 @@ def init_db_command():
     """Creates all database tables and seeds them with initial data."""
     with app.app_context():
         db.create_all()
-        if not User.query.filter_by(username='admin').first():
+        if not User.query.first():
             print("Seeding database with initial data...")
             admin_password_hash = generate_password_hash("adminpassword")
             admin_user = User(
@@ -326,6 +357,31 @@ def init_db_command():
         else:
             print("Database already contains data.")
 
+# --- Admin Creation Command ---
+@app.cli.command("create-admin")
+@click.argument("username")
+@click.argument("password")
+@click.argument("email")
+def create_admin_command(username, password, email):
+    """Creates a new admin user."""
+    with app.app_context():
+        user = User.query.filter_by(username=username).first()
+        if user:
+            print(f"Error: Username '{username}' already exists.")
+            sys.exit(1)
+        
+        hashed_password = generate_password_hash(password)
+        new_admin = User(
+            username=username,
+            password=hashed_password,
+            name=username,
+            email=email,
+            role='admin'
+        )
+        db.session.add(new_admin)
+        db.session.commit()
+        print(f"New admin user '{username}' created successfully!")
+        
 # --- Authentication and Authorization ---
 def get_current_user_from_request():
     """
@@ -421,6 +477,11 @@ def handle_crud(model, item_id=None):
                 processed_data['lastMaintenance'] = parse_date_str(processed_data.pop('lastMaintenance'))
             if 'nextMaintenance' in processed_data:
                 processed_data['nextMaintenance'] = parse_date_str(processed_data.pop('nextMaintenance'))
+        elif model == Pilot:
+            if 'userId' in processed_data: processed_data['user_id'] = processed_data.pop('userId')
+            if 'missionId' in processed_data: processed_data['mission_id'] = processed_data.pop('missionId')
+            if 'checklistId' in processed_data: processed_data['checklist_id'] = processed_data.pop('checklistId')
+            if 'droneIds' in processed_data: processed_data['drone_ids'] = processed_data.pop('droneIds')
         
         if model == Media:
             processed_data['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
@@ -526,6 +587,39 @@ def manage_users(): return handle_crud(User)
 @admin_required
 def manage_user(user_id): return handle_crud(User, item_id=user_id)
 
+# Pilot Endpoints
+@app.route('/api/pilots', methods=['GET', 'POST'])
+@login_required
+def manage_pilots():
+    if request.method == 'POST':
+        data = request.get_json()
+        new_item = Pilot(
+            name=data.get('name'),
+            user_id=data.get('userId'),
+            mission_id=data.get('missionId'),
+            checklist_id=data.get('checklistId'),
+            drone_ids=data.get('droneIds')
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        return jsonify(new_item.to_dict()), 201
+    return handle_crud(Pilot)
+
+@app.route('/api/pilots/<string:pilot_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def manage_pilot(pilot_id):
+    if request.method == 'PUT':
+        data = request.get_json()
+        item = Pilot.query.get_or_404(pilot_id)
+        if 'name' in data: item.name = data['name']
+        if 'userId' in data: item.user_id = data['userId']
+        if 'missionId' in data: item.mission_id = data['missionId']
+        if 'checklistId' in data: item.checklist_id = data['checklistId']
+        if 'droneIds' in data: item.drone_ids = data['droneIds']
+        db.session.commit()
+        return jsonify(item.to_dict())
+    return handle_crud(Pilot, item_id=pilot_id)
+
 # Drone Endpoints
 @app.route('/api/drones', methods=['GET', 'POST'])
 @login_required
@@ -596,15 +690,17 @@ def manage_mission(mission_id): return handle_crud(Mission, item_id=mission_id)
 @login_required
 def manage_media_all():
     if request.method == 'GET':
-        media_items = db.session.query(Media, Drone, Mission).\
+        media_items = db.session.query(Media, Drone, Mission, Pilot).\
             outerjoin(Drone, Media.droneId == Drone.id).\
             outerjoin(Mission, Media.missionId == Mission.id).\
+            outerjoin(Pilot, Media.pilotId == Pilot.id).\
             order_by(Media.timestamp.desc()).all()
         result = []
-        for media, drone, mission in media_items:
+        for media, drone, mission, pilot in media_items:
             media_dict = media.to_dict()
             media_dict['droneName'] = drone.name if drone else 'N/A'
             media_dict['missionName'] = mission.name if mission else 'N/A'
+            media_dict['pilotName'] = pilot.name if pilot else 'N/A'
             result.append(media_dict)
         return jsonify(result)
     return handle_crud(Media)
@@ -777,7 +873,6 @@ def command_drone(drone_id):
 
 # --- Live Streaming Endpoints ---
 @app.route('/api/stream/<string:drone_id>/start', methods=['POST'])
-@login_required
 def start_stream(drone_id):
     print(f"DEBUG: Attempting to start stream for drone {drone_id}", flush=True)
     if FFMPEG_PATH is None:
@@ -819,7 +914,6 @@ def start_stream(drone_id):
         return jsonify({"error": f"Failed to start stream: {str(e)}"}), 500
 
 @app.route('/api/stream/<string:drone_id>/stop', methods=['POST'])
-@login_required
 def stop_stream(drone_id):
     """
     Stops the FFmpeg process for a given drone and cleans up the HLS files.
@@ -890,7 +984,6 @@ def shutdown_ffmpeg_processes():
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                print(f"Force killing FFmpeg process for drone {drone_id} due to timeout...")
                 process.kill()
         stream_dir = os.path.join(app.root_path, 'hls_streams', drone_id)
         if os.path.exists(stream_dir):
